@@ -12,9 +12,6 @@ class StaticTFPublisher : public rclcpp::Node
 public:
     StaticTFPublisher() : Node("static_tf_publisher")
     {
-        // Enable sim time param
-        this->declare_parameter("use_sim_time", true);
-
         // Use fixed absolute path for JSON file
         std::string json_file = "/home/regastation/workspaces/masters_ws/src/MultiAgentMapping/initial_positions.json";
 
