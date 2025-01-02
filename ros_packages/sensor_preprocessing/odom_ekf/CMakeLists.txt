@@ -17,11 +17,6 @@ find_package(nav_msgs REQUIRED)
 find_package(tf2_msgs REQUIRED)
 
 install(
-  DIRECTORY config
-  DESTINATION share/${PROJECT_NAME}/
-)
-
-install(
   DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}/
 )
