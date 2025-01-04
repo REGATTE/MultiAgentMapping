@@ -8,9 +8,9 @@ from omni.isaac.core.utils.stage import add_reference_to_stage
 from .spawn import RobotSpawner
 from .file_manager import FileManager
 from .global_clock import GlobalClockGraph
+from .utils import reset_simulation_and_ros2
 
 import threading
-
 
 class RoboticsMultiagentMappingExtension(omni.ext.IExt):
     def on_startup(self, ext_id):
@@ -222,6 +222,9 @@ class RoboticsMultiagentMappingExtension(omni.ext.IExt):
             print(f"[Extension] Error during spawning: {e}")
 
     def reset_robots_to_initial_positions(self):
+        # Stop Simulation and reset ROS2
+        reset_simulation_and_ros2()
+
         if self.robot_spawner:
             self.robot_spawner.reset_to_initial_positions()
             print("[Extension] Robots reset to initial positions.")
@@ -230,6 +233,9 @@ class RoboticsMultiagentMappingExtension(omni.ext.IExt):
 
     def reset(self):
         try:
+            # Stop Simulation and reset ROS2
+            reset_simulation_and_ros2()
+
             # Reset the USD world by removing the /World prim
             stage = omni.usd.get_context().get_stage()
             if stage.GetPrimAtPath("/World"):
