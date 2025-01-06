@@ -69,7 +69,15 @@ Replace `x` with the robot's ID number. For example, for `scout_1_1`, use:
 export ROS_DOMAIN_ID=1
 ```
 
-2. Launch LIO-SAM with the corresponding configuration file:
+*Run this in every terminal window related to the robot*
+
+2. Launch PointCloud2 Updater to include rings in the msg data
+
+```bash
+ros2 launch pcl_ring_publisher ring_publisher.launch.py robot_namespace:=scout_x_x
+```
+
+3. Launch LIO-SAM with the corresponding configuration file:
 ```bash
 ros2 launch lio_sam run.launch.py params_file:=/path/to/Config/LIO_SAM/scout_1_1.yaml
 ```
