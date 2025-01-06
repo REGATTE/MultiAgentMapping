@@ -92,9 +92,3 @@ The JSON file should define robot namespaces, positions, and rotations as shown 
 
 ## License
 This package is distributed under the [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0).
-
----
-
-## Contact
-For issues or contributions, contact **regastation**.
-
