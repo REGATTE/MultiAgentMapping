@@ -10,17 +10,30 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
+find_package(PCL REQUIRED)
+find_package(pcl_conversions REQUIRED)
+
+include_directories(${PCL_INCLUDE_DIRS})
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
 
 add_executable(ring_publisher src/ring_publisher.cpp)
+# Link libraries
+target_link_libraries(ring_publisher
+  ${PCL_LIBRARIES}  # Link PCL libraries
+)
+# Specify target dependencies
 target_include_directories(ring_publisher PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>)
+  $<INSTALL_INTERFACE:include>
+)
 target_compile_features(ring_publisher PUBLIC c_std_99 cxx_std_17)  # Require C99 and C++17
 ament_target_dependencies(
   ring_publisher
   "rclcpp"
   "sensor_msgs"
   "std_msgs"
+  "pcl_conversions"
 )
 
 install(TARGETS ring_publisher

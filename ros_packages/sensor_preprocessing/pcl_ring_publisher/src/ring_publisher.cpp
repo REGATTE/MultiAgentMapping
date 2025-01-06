@@ -1,79 +1,143 @@
-// C++ Node: ring_publisher.cpp
+/**
+ * @file lidar_ring_converter.cpp
+ * @brief ROS 2 Node for converting LiDAR point cloud data to include ring and time fields.
+ *
+ * This node dynamically subscribes to a specified topic for incoming point cloud data,
+ * processes the data to calculate ring and time values for each point, and publishes
+ * the updated data to a new topic. It supports dynamic configuration of LiDAR parameters
+ * like the number of vertical beams (N_SCAN) and horizontal resolution (Horizon_SCAN).
+ *
+ * @author [Your Name]
+ * @date [Date]
+ */
+
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
-#include <sensor_msgs/point_cloud2_iterator.hpp>
+#include <pcl/point_cloud.h>
+#include <pcl/point_types.h>
+#include <pcl_conversions/pcl_conversions.h>
 
-class RingPublisher : public rclcpp::Node
+// Global variables for topic names
+std::string lidar_topic; 
+std::string output_topic;
+
+/**
+ * @struct PointXYZIRT
+ * @brief Custom point type to store x, y, z, intensity, ring, and time fields.
+ */
+struct PointXYZIRT
+{
+    PCL_ADD_POINT4D                  ///< 3D point coordinates (x, y, z)
+    PCL_ADD_INTENSITY                ///< Intensity value
+    uint16_t ring;                   ///< Ring number
+    float time;                      ///< Time offset
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+} EIGEN_ALIGN16;
+
+// Register custom point type
+POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRT,  
+    (float, x, x) (float, y, y) (float, z, z) (float, intensity, intensity)
+    (uint16_t, ring, ring) (float, time, time)
+)
+
+/**
+ * @class LidarRingConverter
+ * @brief ROS 2 Node for processing and augmenting LiDAR point cloud data.
+ */
+class LidarRingConverter : public rclcpp::Node
 {
 public:
-    RingPublisher() : Node("ring_publisher")
+    /**
+     * @brief Constructor for the LidarRingConverter class.
+     */
+    LidarRingConverter() : Node("lidar_ring_converter")
     {
         // Declare parameters
-        this->declare_parameter<std::string>("robot_namespace", "robot_x");
-        this->declare_parameter<std::string>("input_topic", "scan3D");
+        this->declare_parameter<std::string>("robot_namespace", "scout_1");
+        this->declare_parameter<int>("N_SCAN", 128);
+        this->declare_parameter<int>("Horizon_SCAN", 2048);
 
         // Get parameters
         std::string robot_namespace = this->get_parameter("robot_namespace").as_string();
-        std::string input_topic = this->get_parameter("input_topic").as_string();
+        N_SCAN = this->get_parameter("N_SCAN").as_int();
+        Horizon_SCAN = this->get_parameter("Horizon_SCAN").as_int();
 
-        // Full topic name with namespace
-        std::string topic_name = "/" + robot_namespace + "/" + input_topic;
+        // Define topic names based on namespace
+        lidar_topic = "/" + robot_namespace + "/scan3D";
+        output_topic = "/" + robot_namespace + "/scan3D_with_rings";
 
-        // Create Subscriber and Publisher
-        sub_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
-            topic_name, 10, std::bind(&RingPublisher::callback, this, std::placeholders::_1));
+        // Create subscriber and publisher
+        subPC_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
+            lidar_topic, 10, std::bind(&LidarRingConverter::lidarHandle, this, std::placeholders::_1));
 
-        pub_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(
-            "/" + robot_namespace + "/scan3D_with_rings", 10);
+        pubPC_ = this->create_publisher<sensor_msgs::msg::PointCloud2>(output_topic, 10);
     }
 
 private:
-    void callback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
-    {
-        auto output = *msg;
+    int N_SCAN;                      ///< Number of vertical beams
+    int Horizon_SCAN;                ///< Horizontal resolution
+    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr subPC_; ///< Subscriber
+    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubPC_;   ///< Publisher
 
-        // Add a 'ring' field if it doesn't exist
-        bool has_ring = false;
-        for (const auto &field : msg->fields)
-        {
-            if (field.name == "ring")
-            {
-                has_ring = true;
-                break;
-            }
-        }
+    /**
+     * @brief Publishes the modified point cloud data.
+     * @param new_pc Processed point cloud.
+     * @param old_msg Original point cloud message header.
+     */
+    template<typename T>
+    void publishPoints(T &new_pc, const sensor_msgs::msg::PointCloud2 &old_msg) {
+        new_pc->is_dense = true;
 
-        if (!has_ring)
-        {
-            // Add 'ring' field to the point cloud
-            sensor_msgs::PointCloud2Modifier modifier(output);
-            modifier.setPointCloud2Fields(4, 
-                                          "x", 1, sensor_msgs::msg::PointField::FLOAT32,
-                                          "y", 1, sensor_msgs::msg::PointField::FLOAT32,
-                                          "z", 1, sensor_msgs::msg::PointField::FLOAT32,
-                                          "ring", 1, sensor_msgs::msg::PointField::UINT16);
-
-            sensor_msgs::PointCloud2Iterator<uint16_t> iter_ring(output, "ring");
-
-            int ring_id = 0;
-            for (; iter_ring != iter_ring.end(); ++iter_ring)
-            {
-                *iter_ring = ring_id % 128; // 128 beams
-                ring_id++;
-            }
-        }
-
-        pub_->publish(output);
+        // Convert to ROS 2 message
+        sensor_msgs::msg::PointCloud2 pc_new_msg;
+        pcl::toROSMsg(*new_pc, pc_new_msg);
+        pc_new_msg.header = old_msg.header;
+        pc_new_msg.header.frame_id = "LiDAR"; // Set frame ID
+        pubPC_->publish(pc_new_msg);
     }
 
-    rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr sub_;
-    rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_;
+    /**
+     * @brief Callback function to process incoming point cloud data.
+     * @param pc_msg Pointer to incoming point cloud message.
+     */
+    void lidarHandle(const sensor_msgs::msg::PointCloud2::SharedPtr pc_msg) {
+        // Convert incoming data
+        pcl::PointCloud<pcl::PointXYZ>::Ptr pc(new pcl::PointCloud<pcl::PointXYZ>());
+        pcl::PointCloud<PointXYZIRT>::Ptr pc_new(new pcl::PointCloud<PointXYZIRT>());
+        pcl::fromROSMsg(*pc_msg, *pc);
+
+        // Process each point
+        for (size_t point_id = 0; point_id < pc->points.size(); ++point_id) {
+
+            PointXYZIRT new_point;
+            new_point.x = pc->points[point_id].x;
+            new_point.y = pc->points[point_id].y;
+            new_point.z = pc->points[point_id].z;
+            new_point.intensity = 0; 
+
+            // Calculate ring ID
+            float ang_bottom = 15.0 + 0.1;
+            float ang_res_y = 30.0 / (N_SCAN - 1); // Vertical resolution
+            float verticalAngle = atan2(new_point.z, sqrt(new_point.x * new_point.x + new_point.y * new_point.y)) * 180 / M_PI;
+            float rowIdn = (verticalAngle + ang_bottom) / ang_res_y;
+            
+            new_point.ring = static_cast<uint16_t>(rowIdn);
+            new_point.time = (point_id / static_cast<float>(N_SCAN)) * 0.1 / Horizon_SCAN;
+
+            pc_new->points.push_back(new_point);
+        }
+        publishPoints(pc_new, *pc_msg);
+    }
 };
 
-int main(int argc, char **argv)
-{
+/**
+ * @brief Main entry point for the node.
+ */
+int main(int argc, char **argv) {
     rclcpp::init(argc, argv);
-    rclcpp::spin(std::make_shared<RingPublisher>());
+    auto node = std::make_shared<LidarRingConverter>();
+    RCLCPP_INFO(node->get_logger(), "Listening to lidar topic ......");
+    rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;
 }

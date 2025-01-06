@@ -1,9 +1,9 @@
-# Ring Publisher ROS 2 Package
+# Lidar Ring Converter ROS 2 Package
 
 ## Overview
-This ROS 2 package adds a `ring` field to point cloud data published by a LiDAR sensor. It is designed to work with multi-beam LiDARs such as the Ouster OS1-128, which has 128 beams and 2048 points per scan.
+This ROS 2 package processes LiDAR point cloud data to include additional fields such as **ring** and **time**. It dynamically subscribes to a specified topic for input data, computes the ring ID and time offset for each point, and republishes the augmented point cloud to an output topic.
 
-The package allows specifying a robot namespace through parameters, enabling the use of multiple robots in a simulation or real-world setup.
+The package supports dynamic configuration of parameters like the number of vertical beams (**N_SCAN**) and horizontal resolution (**Horizon_SCAN**) through launch file arguments.
 
 ---
 
@@ -12,18 +12,18 @@ The package allows specifying a robot namespace through parameters, enabling the
 - rclcpp
 - sensor_msgs
 - std_msgs
-- launch
-- launch_ros
+- PCL (Point Cloud Library)
+- pcl_conversions
 
 ---
 
 ## Topics
 | Topic Name                                      | Type                                         | Role       |
 |-------------------------------------------------|---------------------------------------------|------------|
-| `/robot_x/scan3D`                               | `sensor_msgs/msg/PointCloud2`               | Subscriber |
-| `/robot_x/scan3D_with_rings`                    | `sensor_msgs/msg/PointCloud2`               | Publisher  |
+| `/robot_namespace/scan3D`                       | `sensor_msgs/msg/PointCloud2`               | Subscriber |
+| `/robot_namespace/scan3D_with_rings`            | `sensor_msgs/msg/PointCloud2`               | Publisher  |
 
-Note: Replace `robot_x` with the appropriate namespace for the robot.
+Note: Replace `robot_namespace` with the desired namespace using the launch file argument.
 
 ---
 
@@ -31,29 +31,31 @@ Note: Replace `robot_x` with the appropriate namespace for the robot.
 | Parameter Name      | Default Value | Description                                                     |
 |---------------------|---------------|-----------------------------------------------------------------|
 | `robot_namespace`   | `robot_x`     | Namespace of the robot used in the topic names.                 |
-| `input_topic`       | `scan3D`      | Input topic for subscribing to the raw point cloud data.        |
+| `N_SCAN`            | `128`         | Number of vertical beams (LiDAR channels).                      |
+| `Horizon_SCAN`      | `2048`        | Horizontal resolution (points per scan).                        |
 
 ---
 
 ## Supported LiDAR Configuration
-This package is tested with the **Ouster OS1-128** LiDAR:
+This package is tested with the following LiDAR configuration:
 - **Beams**: 128
 - **Points per Scan**: 2048
-- **Ring Field**: Calculated from beam index (0–127) and repeated cyclically.
+- **Frame ID**: "LiDAR"
+- **Ring Field**: Calculated dynamically based on vertical angle.
 
 ---
 
 ## Building the Package
 ```bash
-colcon build --packages-select pcl_ring_publisher
+colcon build --packages-select lidar_ring_converter_pkg
 ```
 
 ---
 
 ## Running the Node
-To launch the node with a specific robot namespace:
+To launch the node with dynamic parameters:
 ```bash
-ros2 launch pcl_ring_publisher ring_publisher.launch.py robot_namespace:=scout_x
+ros2 launch lidar_ring_converter_pkg lidar_ring_converter_launch.py robot_namespace:=scout_1 N_SCAN:=128 Horizon_SCAN:=2048
 ```
 
 ---
@@ -64,7 +66,7 @@ To visualize the output point cloud with the `ring` field:
 rviz2
 ```
 - Add a **PointCloud2** display.
-- Set the topic to `/scout_x/scan3D_with_rings`.
+- Set the topic to `/robot_namespace/scan3D_with_rings`.
 - Use **Color Transformer** -> **AxisColor** to view different ring IDs.
 
 ---
@@ -73,3 +75,6 @@ rviz2
 This package is released under the Apache 2.0 License.
 
 ---
+
+## Contact
+For questions or issues, contact: **your_email@example.com**
