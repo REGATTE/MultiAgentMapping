@@ -113,7 +113,15 @@ private:
             new_point.x = pc->points[point_id].x;
             new_point.y = pc->points[point_id].y;
             new_point.z = pc->points[point_id].z;
-            new_point.intensity = 0; 
+            
+            // Calculate Intensity by Distance
+            // Calculate Euclidean distance from the origin (LiDAR sensor)
+            float distance = sqrt(new_point.x * new_point.x + 
+                                new_point.y * new_point.y + 
+                                new_point.z * new_point.z);
+
+            // Normalize intensity (scale to 0–255 for visualization purposes)
+            new_point.intensity = std::min(255.0f, distance * 10.0f); // Scale factor = 10.0, adjust as needed
 
             // Calculate ring ID
             float ang_bottom = 15.0 + 0.1;
