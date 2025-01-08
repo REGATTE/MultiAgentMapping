@@ -52,6 +52,9 @@ def generate_launch_description():
         name='ekf_filter_node',  # Static node name
         output='screen',
         parameters=[parameters],  # Pass YAML parameters directly
+        remappings=[
+            ('/clock', 'clock')
+        ]
     )
 
     # Return the launch description
