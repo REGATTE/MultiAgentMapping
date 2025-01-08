@@ -4,6 +4,7 @@ from launch.substitutions import LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 from launch_ros.actions import Node
 import os
+import yaml
 
 
 def generate_launch_description():
@@ -17,27 +18,36 @@ def generate_launch_description():
     # Get the robot namespace
     robot_namespace = LaunchConfiguration('robot_namespace')
 
-    # Base config file path (static)
+    # Locate the config file
     package_name = 'project_config'
-    base_config_path = os.path.join(
+    config_file_path = os.path.join(
         get_package_share_directory(package_name),
         'config',
-        'Odom_ekf'
+        'Odom_ekf',
+        'scout_1_1.yaml'  # Hardcode this for now
     )
+
+    # Debugging output for config file path
+    print(f"Config file path: {config_file_path}")
+
+    # Load the YAML file into a dictionary
+    with open(config_file_path, 'r') as file:
+        params = yaml.safe_load(file)
+
+    # Extract the actual parameters
+    parameters = params['ekf_filter_node']['ros__parameters']
 
     # Define the EKF Node
     ekf_node = Node(
         package='robot_localization',
         executable='ekf_node',
         namespace=robot_namespace,
-        name=[robot_namespace, '_ekf_filter_node'],  # Prefix the name with namespace
+        name='ekf_filter_node',  # Static name
         output='screen',
-        parameters=[{
-            'config_file': [base_config_path, '/', robot_namespace, '.yaml']  # Use substitutions properly
-        }],
-        remappings=[('/odometry/filtered', '/odom/processed')],
+        parameters=[parameters],  # Pass parameters directly
     )
 
+    # Return the launch description
     return LaunchDescription([
         robot_namespace_arg,
         ekf_node
