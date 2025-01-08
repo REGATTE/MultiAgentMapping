@@ -8,30 +8,37 @@ import yaml
 
 
 def generate_launch_description():
-    # Declare launch argument for robot namespace
+    # Declare launch arguments
     robot_namespace_arg = DeclareLaunchArgument(
         'robot_namespace',
         default_value='scout_1_1',
-        description='Namespace of the robot to select EKF config file'
+        description='Namespace for the robot and topics'
     )
 
-    # Get the robot namespace
-    robot_namespace = LaunchConfiguration('robot_namespace')
+    config_file_arg = DeclareLaunchArgument(
+        'config_file',
+        default_value='scout_1_1.yaml',
+        description='Configuration YAML file for EKF node'
+    )
 
-    # Locate the config file
+    # Get launch configurations
+    robot_namespace = LaunchConfiguration('robot_namespace')
+    config_file = LaunchConfiguration('config_file')
+
+    # Resolve the config file path at generation time
     package_name = 'project_config'
-    config_file_path = os.path.join(
+    config_directory = os.path.join(
         get_package_share_directory(package_name),
         'config',
-        'Odom_ekf',
-        'scout_1_1.yaml'  # Hardcode this for now
+        'Odom_ekf'
     )
+    full_config_path = os.path.join(config_directory, 'scout_1_1.yaml')  # Replace with static filename or parameter if dynamic
 
-    # Debugging output for config file path
-    print(f"Config file path: {config_file_path}")
+    # Debugging output for config path
+    print(f"Config file path: {full_config_path}")
 
-    # Load the YAML file into a dictionary
-    with open(config_file_path, 'r') as file:
+    # Load parameters from the YAML file
+    with open(full_config_path, 'r') as file:
         params = yaml.safe_load(file)
 
     # Extract the actual parameters
@@ -41,14 +48,15 @@ def generate_launch_description():
     ekf_node = Node(
         package='robot_localization',
         executable='ekf_node',
-        namespace=robot_namespace,
-        name='ekf_filter_node',  # Static name
+        namespace=robot_namespace,  # Dynamic namespace
+        name='ekf_filter_node',  # Static node name
         output='screen',
-        parameters=[parameters],  # Pass parameters directly
+        parameters=[parameters],  # Pass YAML parameters directly
     )
 
     # Return the launch description
     return LaunchDescription([
         robot_namespace_arg,
+        config_file_arg,
         ekf_node
     ])
