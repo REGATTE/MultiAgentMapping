@@ -14,6 +14,16 @@ find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(robot_localization REQUIRED)
 
+# Launch files
+install(DIRECTORY config
+  DESTINATION share/${PROJECT_NAME}/
+)
+
+# Launch files
+install(DIRECTORY launch
+  DESTINATION share/${PROJECT_NAME}/
+)
+
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   # the following line skips the linter which checks for copyrights
