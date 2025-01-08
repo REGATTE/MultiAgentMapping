@@ -1,0 +1,4 @@
+libcap-dev
+libpcl-dev
+ros-humble-pcl-conversions
+ros-humble-robot-localization
