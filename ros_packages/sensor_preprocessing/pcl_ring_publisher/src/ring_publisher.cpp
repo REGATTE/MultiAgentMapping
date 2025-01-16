@@ -1,14 +1,6 @@
 /**
  * @file lidar_ring_converter.cpp
  * @brief ROS 2 Node for converting LiDAR point cloud data to include ring and time fields.
- *
- * This node dynamically subscribes to a specified topic for incoming point cloud data,
- * processes the data to calculate ring and time values for each point, and publishes
- * the updated data to a new topic. It supports dynamic configuration of LiDAR parameters
- * like the number of vertical beams (N_SCAN) and horizontal resolution (Horizon_SCAN).
- *
- * @author [Your Name]
- * @date [Date]
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -18,7 +10,7 @@
 #include <pcl_conversions/pcl_conversions.h>
 
 // Global variables for topic names
-std::string lidar_topic; 
+std::string lidar_topic;
 std::string output_topic;
 
 /**
@@ -35,7 +27,7 @@ struct PointXYZIRT
 } EIGEN_ALIGN16;
 
 // Register custom point type
-POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRT,  
+POINT_CLOUD_REGISTER_POINT_STRUCT (PointXYZIRT,
     (float, x, x) (float, y, y) (float, z, z) (float, intensity, intensity)
     (uint16_t, ring, ring) (float, time, time)
 )
@@ -106,6 +98,11 @@ private:
         pcl::PointCloud<PointXYZIRT>::Ptr pc_new(new pcl::PointCloud<PointXYZIRT>());
         pcl::fromROSMsg(*pc_msg, *pc);
 
+        // LiDAR parameters for vertical FoV
+        float fov_bottom = -22.5;  // Bottom of vertical FoV
+        float fov_top = 22.5;      // Top of vertical FoV
+        float ang_res_y = (fov_top - fov_bottom) / (N_SCAN - 1);  // Vertical resolution
+
         // Process each point
         for (size_t point_id = 0; point_id < pc->points.size(); ++point_id) {
 
@@ -113,22 +110,22 @@ private:
             new_point.x = pc->points[point_id].x;
             new_point.y = pc->points[point_id].y;
             new_point.z = pc->points[point_id].z;
-            
-            // Calculate Intensity by Distance
-            // Calculate Euclidean distance from the origin (LiDAR sensor)
-            float distance = sqrt(new_point.x * new_point.x + 
-                                new_point.y * new_point.y + 
-                                new_point.z * new_point.z);
 
-            // Normalize intensity (scale to 0–255 for visualization purposes)
-            new_point.intensity = std::min(255.0f, distance * 10.0f); // Scale factor = 10.0, adjust as needed
+            // Calculate Intensity by Distance
+            float distance = sqrt(new_point.x * new_point.x +
+                                  new_point.y * new_point.y +
+                                  new_point.z * new_point.z);
+
+            new_point.intensity = std::min(255.0f, distance * 10.0f);
 
             // Calculate ring ID
-            float ang_bottom = 15.0 + 0.1;
-            float ang_res_y = 30.0 / (N_SCAN - 1); // Vertical resolution
-            float verticalAngle = atan2(new_point.z, sqrt(new_point.x * new_point.x + new_point.y * new_point.y)) * 180 / M_PI;
-            float rowIdn = (verticalAngle + ang_bottom) / ang_res_y;
-            
+            float verticalAngle = atan2(new_point.z, sqrt(new_point.x * new_point.x + new_point.y * new_point.y)) * 180.0 / M_PI;
+            float rowIdn = (verticalAngle - fov_bottom) / ang_res_y;
+
+            if (rowIdn < 0 || rowIdn >= N_SCAN) {
+                continue;  // Skip points outside the valid FoV
+            }
+
             new_point.ring = static_cast<uint16_t>(rowIdn);
             new_point.time = (point_id / static_cast<float>(N_SCAN)) * 0.1 / Horizon_SCAN;
 
