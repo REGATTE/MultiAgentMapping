@@ -10,10 +10,10 @@ git clone https://github.com/REGATTE/MultiAgentMapping.git --recursive
 
 ### Install LIO-SAM
 
-1. Clone the LIO-SAM repository:
+1. Clone the LIO-SAM repository, if not done from above recursive install :
 ```bash
 cd ros2_ws/src
-git clone https://github.com/TixiaoShan/LIO-SAM.git -b ros2
+git clone https://github.com/REGATTE/LIO-SAM_isaac_sim.git 
 ```
 
 2. Install required dependencies:
