@@ -5,7 +5,7 @@
 ### Clone the Repository
 ```bash
 cd ros2_ws/src
-git clone https://github.com/REGATTE/MultiAgentMapping.git
+git clone https://github.com/REGATTE/MultiAgentMapping.git --recursive
 ```
 
 ### Install LIO-SAM
