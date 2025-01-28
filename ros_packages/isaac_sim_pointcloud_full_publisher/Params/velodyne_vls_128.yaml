@@ -1,0 +1,7 @@
+lidar_name: "Velodyne`s VLS-128"
+vertical_channels: 128
+horizontal_resolution: 1800
+fov_bottom: -25.0
+fov_top: 15.0
+min_dist: 1.0
+max_dist: 120.0
