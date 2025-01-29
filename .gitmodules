@@ -1,3 +1,11 @@
 [submodule "ros_packages/isaac_sim_pointcloud_full_publisher"]
 	path = ros_packages/isaac_sim_pointcloud_full_publisher
 	url = https://github.com/REGATTE/isaac_sim_pointcloud_full_publisher
+[submodule "ros_packages/--name"]
+	path = ros_packages/--name
+	url = https://github.com/REGATTE/LIO-SAM_isaac_sim
+	branch = distributed_slam
+[submodule "ros_packages/LIO-SAM_isaac_sim"]
+	path = ros_packages/LIO-SAM_isaac_sim
+	url = https://github.com/REGATTE/LIO-SAM_isaac_sim
+	branch = distributed_slam
