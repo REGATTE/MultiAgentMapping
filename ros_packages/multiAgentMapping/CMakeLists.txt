@@ -29,18 +29,19 @@ find_package(PCL REQUIRED)
 find_package(GTSAM REQUIRED)
 find_package(Eigen REQUIRED)
 find_package(OpenMP REQUIRED)
+find_package(Boost REQUIRED)
 
 include_directories(
-  include/multiAgentMapping
-  include/multiAgentMapping/LIO_SAM
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${PCL_INCLUDE_DIRS}
 )
 
 
 rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" DEPENDENCIES std_msgs sensor_msgs)
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 add_executable(${PROJECT_NAME}_featureExtraction src/LIO_SAM/featureExtraction.cpp)
 ament_target_dependencies(${PROJECT_NAME}_featureExtraction rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL)
-rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 target_link_libraries(${PROJECT_NAME}_featureExtraction "${cpp_typesupport_target}") 
 
 add_executable(${PROJECT_NAME}_imageProjection src/LIO_SAM/imageProjection.cpp)
@@ -69,23 +70,13 @@ install(
   DESTINATION share/${PROJECT_NAME}/
 )
 
+# Install Executables
 install(
-  TARGETS ${PROJECT_NAME}_imageProjection
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(
-  TARGETS ${PROJECT_NAME}_imuPreintegration
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(
-  TARGETS ${PROJECT_NAME}_featureExtraction
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(
-  TARGETS ${PROJECT_NAME}_mapOptimization
+  TARGETS 
+    ${PROJECT_NAME}_featureExtraction
+    ${PROJECT_NAME}_imageProjection
+    ${PROJECT_NAME}_imuPreintegration
+    ${PROJECT_NAME}_mapOptimization
   DESTINATION lib/${PROJECT_NAME}
 )
 
