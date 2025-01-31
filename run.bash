@@ -17,7 +17,7 @@ gnome-terminal -- bash -c "
 echo "Launching LIO-SAM with the specified parameters for Scout_1_1 in a new terminal..."
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=1; 
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_1_1.yaml namespace:=/scout_1_1; 
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_1_1.yaml; 
     exec bash
 "
 
@@ -35,7 +35,7 @@ gnome-terminal -- bash -c "
 echo "Launching LIO-SAM with the specified parameters for Scout_2_2 in a new terminal..."
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=2; 
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_2_2.yaml namespace:=/scout_2_2; 
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_2_2.yaml; 
     exec bash
 "
 
@@ -53,7 +53,7 @@ gnome-terminal -- bash -c "
 echo "Launching LIO-SAM with the specified parameters for Scout_3_3 in a new terminal..."
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=3; 
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_3_3.yaml namespace:=/scout_3_3; 
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_3_3.yaml; 
     exec bash
 "
 
@@ -71,6 +71,6 @@ gnome-terminal -- bash -c "
 echo "Launching LIO-SAM with the specified parameters for Scout_4_4 in a new terminal..."
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=4; 
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_4_4.yaml namespace:=/scout_4_4; 
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_4_4.yaml; 
     exec bash
 "

@@ -67,9 +67,6 @@ enum class SensorType { VELODYNE, OUSTER, LIVOX };
 class ParamServer : public rclcpp::Node
 {
 public:
-    ParamServer();
-
-    std::string name;
     std::string robot_id;
 
     //Topics
@@ -157,14 +154,6 @@ public:
 
     ParamServer(std::string node_name, const rclcpp::NodeOptions & options) : Node(node_name, options)
     {
-        // Robot info
-        std::string robot_namespace = this->get_namespace();
-        if(robot_namespace.length() < 1){
-            RCLCPP_ERROR(this->get_logger(), "Invalid robot prefix (should be either 'a-z' or 'A-Z'): %s", robot_namespace.c_str());
-            rclcpp::shutdown();
-        }
-        name = robot_namespace.substr(1); // Exclude the '/'
-
         declare_parameter("pointCloudTopic", "points");
         get_parameter("pointCloudTopic", pointCloudTopic);
         declare_parameter("imuTopic", "imu/data");
