@@ -1,4 +1,5 @@
 #include "multiAgentMapping/LIO_SAM/utility.hpp"
+#include "multiAgentMapping/distributedMapping/distributedMapping.hpp"
 #include "multi_agent_mapping/msg/cloud_info.hpp"
 #include "multi_agent_mapping/srv/save_map.hpp"
 #include <gtsam/geometry/Rot3.h>
@@ -50,6 +51,9 @@ class mapOptimization : public ParamServer
 {
 
 public:
+
+    //distributed slam
+    distributedMapping distMapping;
 
     // gtsam
     NonlinearFactorGraph gtSAMgraph;
@@ -320,6 +324,25 @@ public:
             downsampleCurrentScan();
 
             scan2MapOptimization();
+
+            //assign sac2Map incremental keypose
+            gtsam::Pose3 pose_to = Pose3(
+                Rot3::RzRyRx(
+                    transformTobeMapped[0],
+                    transformTobeMapped[1],
+                    transformTobeMapped[2]
+                ),
+                Point3(
+                    transformTobeMapped[3],
+                    transformTobeMapped[4],
+                    transformTobeMapped[5]
+                )
+            );
+            if(distMapping.saveFrame(pose_to)){
+                std::cout << "saving keyframe" << std::endl;
+            } else {
+                std::cout << "searching for another frame" << std::endl;
+            }
 
             saveKeyFramesAndFactor();
 
