@@ -158,12 +158,14 @@ public:
         parameters.relinearizeSkip = 1;
         isam = new ISAM2(parameters);
 
-        pubKeyPoses = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/trajectory", 1);
-        pubLaserCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/map_global", 1);
-        pubLaserOdometryGlobal = create_publisher<nav_msgs::msg::Odometry>("lio_sam/mapping/odometry", qos);
+        std::string topicPrefix = std::string(this->get_namespace()) + "/lio_sam/mapping/";
+
+        pubKeyPoses = create_publisher<sensor_msgs::msg::PointCloud2>(topicPrefix + "trajectory", 1);
+        pubLaserCloudSurround = create_publisher<sensor_msgs::msg::PointCloud2>(topicPrefix + "map_global", 1);
+        pubLaserOdometryGlobal = create_publisher<nav_msgs::msg::Odometry>(topicPrefix + "odometry", qos);
         pubLaserOdometryIncremental = create_publisher<nav_msgs::msg::Odometry>(
-            "lio_sam/mapping/odometry_incremental", qos);
-        pubPath = create_publisher<nav_msgs::msg::Path>("lio_sam/mapping/path", 1);
+            topicPrefix + "odometry_incremental", qos);
+        pubPath = create_publisher<nav_msgs::msg::Path>(topicPrefix + "path", 1);
         br = std::make_unique<tf2_ros::TransformBroadcaster>(this);
 
         subCloud = create_subscription<multi_agent_mapping::msg::CloudInfo>(
@@ -236,13 +238,13 @@ public:
         };
         
         srvSaveMap = create_service<multi_agent_mapping::srv::SaveMap>("lio_sam/save_map", saveMapService);
-        pubHistoryKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
-        pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/icp_loop_closure_history_cloud", 1);
-        pubLoopConstraintEdge = create_publisher<visualization_msgs::msg::MarkerArray>("/lio_sam/mapping/loop_closure_constraints", 1);
+        pubHistoryKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>(topicPrefix + "icp_loop_closure_history_cloud", 1);
+        pubIcpKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>(topicPrefix + "icp_loop_closure_history_cloud", 1);
+        pubLoopConstraintEdge = create_publisher<visualization_msgs::msg::MarkerArray>(topicPrefix + "loop_closure_constraints", 1);
 
-        pubRecentKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/map_local", 1);
-        pubRecentKeyFrame = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/cloud_registered", 1);
-        pubCloudRegisteredRaw = create_publisher<sensor_msgs::msg::PointCloud2>("lio_sam/mapping/cloud_registered_raw", 1);
+        pubRecentKeyFrames = create_publisher<sensor_msgs::msg::PointCloud2>(topicPrefix + "map_local", 1);
+        pubRecentKeyFrame = create_publisher<sensor_msgs::msg::PointCloud2>(topicPrefix + "cloud_registered", 1);
+        pubCloudRegisteredRaw = create_publisher<sensor_msgs::msg::PointCloud2>(topicPrefix + "cloud_registered_raw", 1);
 
         downSizeFilterCorner.setLeafSize(mappingCornerLeafSize, mappingCornerLeafSize, mappingCornerLeafSize);
         downSizeFilterSurf.setLeafSize(mappingSurfLeafSize, mappingSurfLeafSize, mappingSurfLeafSize);
