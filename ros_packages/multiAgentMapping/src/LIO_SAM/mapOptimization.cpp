@@ -1358,30 +1358,58 @@ public:
 
     bool saveFrame()
     {
-        if (cloudKeyPoses3D->points.empty())
+        if (cloudKeyPoses3D->points.empty()) {
+            RCLCPP_INFO(this->get_logger(), "First keyframe, saving frame.");
             return true;
-
-        if (sensor == SensorType::LIVOX)
-        {
-            if (timeLaserInfoCur - cloudKeyPoses6D->back().time > 1.0)
-                return true;
         }
 
-        Eigen::Affine3f transStart = pclPointToAffine3f(cloudKeyPoses6D->back());
-        Eigen::Affine3f transFinal = pcl::getTransformation(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5], 
-                                                            transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]);
-        Eigen::Affine3f transBetween = transStart.inverse() * transFinal;
-        float x, y, z, roll, pitch, yaw;
-        pcl::getTranslationAndEulerAngles(transBetween, x, y, z, roll, pitch, yaw);
+        if (sensor == SensorType::LIVOX) {
+            if (timeLaserInfoCur - cloudKeyPoses6D->back().time > 1.0) {
+                RCLCPP_INFO(this->get_logger(), "Time diff threshold met for LIVOX, saving frame.");
+                return true;
+            }
+        }
 
-        if (abs(roll)  < surroundingkeyframeAddingAngleThreshold &&
+        // Convert last keyframe to gtsam::Pose3
+        gtsam::Pose3 lastKeyframePose = pclPointTogtsamPose3(cloudKeyPoses6D->back());
+
+        // Create the current pose using gtsam::Pose3
+        gtsam::Pose3 currentPose(
+            gtsam::Rot3::RzRyRx(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]),
+            gtsam::Point3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5])
+        );
+
+        // Calculate relative transformation
+        gtsam::Pose3 relativePose = lastKeyframePose.inverse() * currentPose;
+
+        // Extract translation
+        gtsam::Point3 translation = relativePose.translation();
+        double x = translation.x(), y = translation.y(), z = translation.z();
+
+        // Extract roll, pitch, yaw
+        gtsam::Vector3 eulerAngles = relativePose.rotation().xyz();
+        double roll = eulerAngles[0];
+        double pitch = eulerAngles[1];
+        double yaw = eulerAngles[2];
+
+        // Log the calculated relative pose
+        RCLCPP_INFO(this->get_logger(), "Relative pose change - [x: %f, y: %f, z: %f, roll: %f, pitch: %f, yaw: %f]",
+                    x, y, z, roll, pitch, yaw);
+
+        // Check if the pose change exceeds the thresholds
+        if (abs(roll) < surroundingkeyframeAddingAngleThreshold &&
             abs(pitch) < surroundingkeyframeAddingAngleThreshold &&
-            abs(yaw)   < surroundingkeyframeAddingAngleThreshold &&
-            sqrt(x*x + y*y + z*z) < surroundingkeyframeAddingDistThreshold)
+            abs(yaw) < surroundingkeyframeAddingAngleThreshold &&
+            sqrt(x * x + y * y + z * z) < surroundingkeyframeAddingDistThreshold) 
+        {
+            RCLCPP_INFO(this->get_logger(), "Pose change is within threshold, not saving frame");
             return false;
+        }
 
+        RCLCPP_INFO(this->get_logger(), "Pose change exceeds threshold, saving frame");
         return true;
     }
+
 
     void addOdomFactor()
     {
@@ -1512,8 +1540,8 @@ public:
         // loop factor
         addLoopFactor();
 
-        // cout << "****************************************************" << endl;
-        // gtSAMgraph.print("GTSAM Graph:\n");
+        cout << "****************************************************" << endl;
+        gtSAMgraph.print("GTSAM Graph:\n");
 
         // update iSAM
         isam->update(gtSAMgraph, initialEstimate);
