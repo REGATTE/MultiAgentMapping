@@ -17,12 +17,26 @@
 #include <gtsam/nonlinear/ISAM2.h>
 
 subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
-    // Initialization if needed
+    std::string robot_name = this->get_namespace();
+    if(robot_name.length() < 1){
+            RCLCPP_ERROR(this->get_logger(), "Invalid robot prefix (should be longer than a letter): %s", robot_name.c_str());
+            rclcpp::shutdown();
+        }
+    robot_namespace = robot_name.substr(1); // Extract the "/"
+
+    // Ensure last character of the name is a digit
+    if(!std::isdigit(robot_namespace.back())){
+        RCLCPP_ERROR(this->get_logger(), "Invalid namespace format: last character is not a digit!");
+        rclcpp::shutdown();
+    }
+    // extract last char, convert to int and assign as robot_id
+    robot_id = robot_namespace.back() - '0';
+    RCLCPP_INFO(this->get_logger(), "Robot ID is %d", robot_id); 
 }
 
 void subGraphMapping::performDistributedMapping(
     const Pose3& pose_to,
     const pcl::PointCloud<PointPose3D>::Ptr& frame_to,
     const rclcpp::Time& timestamp) {
-        RCLCPP_INFO(this->get_logger(), "Performing distributed mapping");
+        RCLCPP_INFO(this->get_logger(), "Performing distributed mapping for robot id: %d", robot_id);
     }

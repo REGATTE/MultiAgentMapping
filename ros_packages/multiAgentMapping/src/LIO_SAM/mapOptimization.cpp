@@ -1,4 +1,5 @@
 #include "multiAgentMapping/LIO_SAM/utility.hpp"
+#include "multiAgentMapping/Distributed_Mapping/subGraphsUtils.hpp"
 #include "multi_agent_mapping/msg/cloud_info.hpp"
 #include "multi_agent_mapping/srv/save_map.hpp"
 #include <gtsam/geometry/Rot3.h>
@@ -58,6 +59,8 @@ public:
     ISAM2 *isam;
     Values isamCurrentEstimate;
     Eigen::MatrixXd poseCovariance;
+
+    subGraphMapping subGraphMap;
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudSurround;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubLaserOdometryGlobal;
@@ -337,7 +340,7 @@ public:
 
                 RCLCPP_INFO(rclcpp::get_logger("CloudConverter"), "Point cloud converted to keyframe successfully.");
 
-                
+                subGraphMap.performDistributedMapping(pose_to, keyframe, timeLaserInfoStamp);
             }
 
             saveKeyFramesAndFactor();
