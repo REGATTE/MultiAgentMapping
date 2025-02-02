@@ -62,7 +62,7 @@ class subGraphMapping : public rclcpp::Node {
 
         subGraphMapping();
 
-        void performDistributedMapping(
+        void processKeyframeForMapping(
             const gtsam::Pose3& pose_to,
             const pcl::PointCloud<PointPose3D>::Ptr& frame_to,
             const rclcpp::Time& timestamp

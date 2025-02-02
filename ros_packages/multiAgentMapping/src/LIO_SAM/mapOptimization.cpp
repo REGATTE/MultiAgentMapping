@@ -342,7 +342,25 @@ public:
                 #ifdef DEV_MODE
                 RCLCPP_INFO(rclcpp::get_logger("CloudConverter"), "Point cloud converted to keyframe successfully.");
                 #endif 
-                subGraphMap.performDistributedMapping(pose_to, keyframe, timeLaserInfoStamp);
+
+                /**
+                 * @brief Processes a new keyframe for distributed SLAM by saving the keyframe data, 
+                 * adding it to the factor graph, and optimizing the robot's pose.
+                 * 
+                 * @param pose_to The current pose of the robot (estimated from odometry or other sources).
+                 * @param frame_to The point cloud representing the current keyframe.
+                 * @param timestamp The timestamp associated with the keyframe, used for synchronization.
+                 * 
+                 * @details
+                 * -> If this is the first keyframe, a prior factor is added to the graph.
+                 * -> For subsequent keyframes, an odometry factor is created based on the 
+                 *   relative motion between the previous keyframe and the current keyframe.
+                 * -> The pose graph is optimized using ISAM2, and the optimized pose is stored.
+                 * -> The local and global paths are updated for visualization purposes.
+                 * 
+                 * @return void
+                 */
+                subGraphMap.processKeyframeForMapping(pose_to, keyframe, timeLaserInfoStamp);
             }
 
             saveKeyFramesAndFactor();

@@ -59,7 +59,7 @@ subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
     local_pose_graph_no_filtering = std::make_shared<NonlinearFactorGraph>();
 }
 
-void subGraphMapping::performDistributedMapping(
+void subGraphMapping::processKeyframeForMapping(
     const Pose3& pose_to,
     const pcl::PointCloud<PointPose3D>::Ptr& frame_to,
     const rclcpp::Time& timestamp) {
