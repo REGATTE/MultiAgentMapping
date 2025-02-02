@@ -68,7 +68,7 @@ class ParamServer : public rclcpp::Node
 {
 public:
     std::string name;
-    std::string robot_id;
+    int robot_id;
 
     //Topics
     string pointCloudTopic;
@@ -161,6 +161,16 @@ public:
             rclcpp::shutdown();
         }
         name = robot_namespace.substr(1); // Extract the "/" 
+
+        // Ensure last character of the name is a digit
+        if(!std::isdigit(name.back())){
+            RCLCPP_ERROR(this->get_logger(), "Invalid namespace format: last character is not a digit!");
+            rclcpp::shutdown();
+        }
+
+        // extract last char, convert to int and assign as robot_id
+        robot_id = name.back() - '0';
+        RCLCPP_INFO(this->get_logger(), "Robot ID is %d", robot_id);
 
         declare_parameter("pointCloudTopic", "points");
         get_parameter("pointCloudTopic", pointCloudTopic);

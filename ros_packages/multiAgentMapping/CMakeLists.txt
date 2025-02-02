@@ -30,17 +30,44 @@ find_package(GTSAM REQUIRED)
 find_package(Eigen REQUIRED)
 find_package(OpenMP REQUIRED)
 
-include_directories(
-  include/multiAgentMapping
-  include/multiAgentMapping/LIO_SAM
+# Common dependencies
+set(COMMON_DEPENDENCIES 
+  rclcpp 
+  rclpy 
+  std_msgs 
+  sensor_msgs 
+  geometry_msgs 
+  nav_msgs 
+  pcl_conversions 
+  pcl_msgs 
+  visualization_msgs 
+  tf2 
+  tf2_ros 
+  tf2_eigen 
+  tf2_sensor_msgs 
+  tf2_geometry_msgs 
+  OpenCV 
+  PCL
 )
 
+include_directories(
+  ${CMAKE_CURRENT_SOURCE_DIR}/include
+  ${PCL_INCLUDE_DIRS}
+)
 
 rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" DEPENDENCIES std_msgs sensor_msgs)
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+
+# build library from src/Distributed_Mapping
+add_library(distributed_mapping_lib
+  src/Distributed_Mapping/subGraphsUtils.cpp
+)
+target_include_directories(distributed_mapping_lib PUBLIC ${rclcpp_INCLUDE_DIRS})
+ament_target_dependencies(distributed_mapping_lib ${COMMON_DEPENDENCIES} GTSAM Eigen3)
+target_link_libraries(distributed_mapping_lib  ${PCL_LIBRARIES}  ${OpenCV_LIBRARIES}  ${Boost_LIBRARIES}  ${GTSAM_LIBRARIES}  OpenMP::OpenMP_CXX)
 
 add_executable(${PROJECT_NAME}_featureExtraction src/LIO_SAM/featureExtraction.cpp)
 ament_target_dependencies(${PROJECT_NAME}_featureExtraction rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL)
-rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 target_link_libraries(${PROJECT_NAME}_featureExtraction "${cpp_typesupport_target}") 
 
 add_executable(${PROJECT_NAME}_imageProjection src/LIO_SAM/imageProjection.cpp)
@@ -54,9 +81,9 @@ target_link_libraries(${PROJECT_NAME}_imuPreintegration gtsam "${cpp_typesupport
 add_executable(${PROJECT_NAME}_mapOptimization src/LIO_SAM/mapOptimization.cpp)
 ament_target_dependencies(${PROJECT_NAME}_mapOptimization rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL GTSAM)
 if (OpenMP_CXX_FOUND)
-  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX)
+  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX distributed_mapping_lib)
 else()
-  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}")
+  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" distributed_mapping_lib)
 endif()
 
 install(
@@ -69,31 +96,27 @@ install(
   DESTINATION share/${PROJECT_NAME}/
 )
 
+# Install Executables
 install(
-  TARGETS ${PROJECT_NAME}_imageProjection
+  TARGETS 
+    ${PROJECT_NAME}_featureExtraction
+    ${PROJECT_NAME}_imageProjection
+    ${PROJECT_NAME}_imuPreintegration
+    ${PROJECT_NAME}_mapOptimization
   DESTINATION lib/${PROJECT_NAME}
 )
 
+# Install Library
 install(
-  TARGETS ${PROJECT_NAME}_imuPreintegration
-  DESTINATION lib/${PROJECT_NAME}
+  TARGETS distributed_mapping_lib
+  DESTINATION lib
 )
-
 install(
-  TARGETS ${PROJECT_NAME}_featureExtraction
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(
-  TARGETS ${PROJECT_NAME}_mapOptimization
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(
-  DIRECTORY "include/"
+  DIRECTORY include/
   DESTINATION include
 )
 
+# Export Include Directories
 ament_export_include_directories(include)
 
 ament_package()
