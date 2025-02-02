@@ -60,7 +60,7 @@
 
 using namespace std;
 
-typedef pcl::PointXYZI PointType;
+typedef pcl::PointXYZI PointPose3D;
 
 enum class SensorType { VELODYNE, OUSTER, LIVOX };
 
@@ -363,7 +363,7 @@ public:
 };
 
 
-sensor_msgs::msg::PointCloud2 publishCloud(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr thisPub, pcl::PointCloud<PointType>::Ptr thisCloud, rclcpp::Time thisStamp, std::string thisFrame)
+sensor_msgs::msg::PointCloud2 publishCloud(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr thisPub, pcl::PointCloud<PointPose3D>::Ptr thisCloud, rclcpp::Time thisStamp, std::string thisFrame)
 {
     sensor_msgs::msg::PointCloud2 tempCloud;
     pcl::toROSMsg(*thisCloud, tempCloud);
@@ -413,13 +413,13 @@ void imuRPY2rosRPY(sensor_msgs::msg::Imu *thisImuMsg, T *rosRoll, T *rosPitch, T
 }
 
 
-float pointDistance(PointType p)
+float pointDistance(PointPose3D p)
 {
     return sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
 }
 
 
-float pointDistance(PointType p1, PointType p2)
+float pointDistance(PointPose3D p1, PointPose3D p2)
 {
     return sqrt((p1.x-p2.x)*(p1.x-p2.x) + (p1.y-p2.y)*(p1.y-p2.y) + (p1.z-p2.z)*(p1.z-p2.z));
 }

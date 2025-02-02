@@ -23,11 +23,11 @@ public:
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubCornerPoints;
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubSurfacePoints;
 
-    pcl::PointCloud<PointType>::Ptr extractedCloud;
-    pcl::PointCloud<PointType>::Ptr cornerCloud;
-    pcl::PointCloud<PointType>::Ptr surfaceCloud;
+    pcl::PointCloud<PointPose3D>::Ptr extractedCloud;
+    pcl::PointCloud<PointPose3D>::Ptr cornerCloud;
+    pcl::PointCloud<PointPose3D>::Ptr surfaceCloud;
 
-    pcl::VoxelGrid<PointType> downSizeFilter;
+    pcl::VoxelGrid<PointPose3D> downSizeFilter;
 
     multi_agent_mapping::msg::CloudInfo cloudInfo;
     std_msgs::msg::Header cloudHeader;
@@ -60,9 +60,9 @@ public:
 
         downSizeFilter.setLeafSize(odometrySurfLeafSize, odometrySurfLeafSize, odometrySurfLeafSize);
 
-        extractedCloud.reset(new pcl::PointCloud<PointType>());
-        cornerCloud.reset(new pcl::PointCloud<PointType>());
-        surfaceCloud.reset(new pcl::PointCloud<PointType>());
+        extractedCloud.reset(new pcl::PointCloud<PointPose3D>());
+        cornerCloud.reset(new pcl::PointCloud<PointPose3D>());
+        surfaceCloud.reset(new pcl::PointCloud<PointPose3D>());
 
         cloudCurvature = new float[N_SCAN*Horizon_SCAN];
         cloudNeighborPicked = new int[N_SCAN*Horizon_SCAN];
@@ -148,8 +148,8 @@ public:
         cornerCloud->clear();
         surfaceCloud->clear();
 
-        pcl::PointCloud<PointType>::Ptr surfaceCloudScan(new pcl::PointCloud<PointType>());
-        pcl::PointCloud<PointType>::Ptr surfaceCloudScanDS(new pcl::PointCloud<PointType>());
+        pcl::PointCloud<PointPose3D>::Ptr surfaceCloudScan(new pcl::PointCloud<PointPose3D>());
+        pcl::PointCloud<PointPose3D>::Ptr surfaceCloudScanDS(new pcl::PointCloud<PointPose3D>());
 
         for (int i = 0; i < N_SCAN; i++)
         {

@@ -21,7 +21,6 @@
 using namespace std;
 using namespace gtsam;
 
-typedef pcl::PointXYZI PointPose3D;
 struct PointPose6D
 {
     float x;
@@ -41,14 +40,13 @@ POINT_CLOUD_REGISTER_POINT_STRUCT  (PointPose6D,
 
 struct singleRobot {
     int robot_id;
-
     std::string robot_namespace;
     std::string odom_frame_;
 
     rclcpp::Time point_cloud_input_stamp;
     double point_cloud_input_time;
-    pcl::PointCloud<PointPose3D>::Ptr keyframe_cloud; //recent keyframe pointcloud
-    std::vector<pcl::PointCloud<PointPose3D>> keyframe_cloud_array; // Array of keyframe clouds
+    pcl::PointCloud<PointPose3D>::Ptr robot_keyframe_cloud; //recent keyframe pointcloud
+    std::vector<pcl::PointCloud<PointPose3D>> robot_keyframe_cloud_array; // Array of keyframe clouds
     Pose3 prior_odom; // Prior factor
 
 };
@@ -62,9 +60,6 @@ class subGraphMapping : public rclcpp::Node {
     public:
 
         subGraphMapping();
-
-        pcl::PointCloud<PointPose3D>::Ptr keyframe_cloud; // recent keyframe pointcloud
-	    std::vector<pcl::PointCloud<PointPose3D>> keyframe_cloud_array; // and its array
 
         void performDistributedMapping(
             const gtsam::Pose3& pose_to,
