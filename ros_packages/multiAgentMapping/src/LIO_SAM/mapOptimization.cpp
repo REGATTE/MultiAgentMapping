@@ -323,6 +323,23 @@ public:
 
             scan2MapOptimization();
 
+            gtsam::Pose3 pose_to = gtsam::Pose3(
+                gtsam::Rot3::RzRyRx(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]),
+                gtsam::Point3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5])
+            );
+            if(saveFrameNew(pose_to)){
+                RCLCPP_INFO(this->get_logger(), "New keyframe selected. Saving keyframe  with  new function ");
+
+                // create a new keyframe 
+                pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe(new pcl::PointCloud<pcl::PointXYZI>());
+                // populate the keyframe from cloud_deskewed message
+                pcl::fromROSMsg(msgIn->cloud_deskewed, *keyframe);
+
+                RCLCPP_INFO(rclcpp::get_logger("CloudConverter"), "Point cloud converted to keyframe successfully.");
+
+                performDistributed
+            }
+
             saveKeyFramesAndFactor();
 
             correctPoses();
@@ -1381,6 +1398,53 @@ public:
 
         // Calculate relative transformation
         gtsam::Pose3 relativePose = lastKeyframePose.inverse() * currentPose;
+
+        // Extract translation
+        gtsam::Point3 translation = relativePose.translation();
+        double x = translation.x(), y = translation.y(), z = translation.z();
+
+        // Extract roll, pitch, yaw
+        gtsam::Vector3 eulerAngles = relativePose.rotation().xyz();
+        double roll = eulerAngles[0];
+        double pitch = eulerAngles[1];
+        double yaw = eulerAngles[2];
+
+        // Log the calculated relative pose
+        RCLCPP_INFO(this->get_logger(), "Relative pose change - [x: %f, y: %f, z: %f, roll: %f, pitch: %f, yaw: %f]",
+                    x, y, z, roll, pitch, yaw);
+
+        // Check if the pose change exceeds the thresholds
+        if (abs(roll) < surroundingkeyframeAddingAngleThreshold &&
+            abs(pitch) < surroundingkeyframeAddingAngleThreshold &&
+            abs(yaw) < surroundingkeyframeAddingAngleThreshold &&
+            sqrt(x * x + y * y + z * z) < surroundingkeyframeAddingDistThreshold) 
+        {
+            RCLCPP_INFO(this->get_logger(), "Pose change is within threshold, not saving frame");
+            return false;
+        }
+
+        RCLCPP_INFO(this->get_logger(), "Pose change exceeds threshold, saving frame");
+        return true;
+    }
+
+    bool saveFrameNew(const gtsam::Pose3& pose_to){
+        if (cloudKeyPoses3D->points.empty()) {
+            RCLCPP_INFO(this->get_logger(), "First keyframe, saving frame.");
+            return true;
+        }
+
+        if (sensor == SensorType::LIVOX) {
+            if (timeLaserInfoCur - cloudKeyPoses6D->back().time > 1.0) {
+                RCLCPP_INFO(this->get_logger(), "Time diff threshold met for LIVOX, saving frame.");
+                return true;
+            }
+        }
+
+        // Convert last keyframe to gtsam::Pose3
+        gtsam::Pose3 lastKeyframePose = pclPointTogtsamPose3(cloudKeyPoses6D->back());
+
+        // Calculate relative transformation using the given pose_to
+        gtsam::Pose3 relativePose = lastKeyframePose.inverse() * pose_to;
 
         // Extract translation
         gtsam::Point3 translation = relativePose.translation();
