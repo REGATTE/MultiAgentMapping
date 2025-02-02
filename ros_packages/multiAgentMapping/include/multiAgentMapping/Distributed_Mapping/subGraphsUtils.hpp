@@ -68,6 +68,8 @@ class subGraphMapping : public rclcpp::Node {
         );
 
     protected:
+        singleRobot robot_info;
+
         int number_of_robots_;
 
         std::string robot_namespace;

@@ -31,12 +31,51 @@ subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
     }
     // extract last char, convert to int and assign as robot_id
     robot_id = robot_namespace.back() - '0';
-    RCLCPP_INFO(this->get_logger(), "Robot ID is %d", robot_id); 
+
+    if(robot_id != -1){
+        robot_info.robot_namespace = robot_namespace;
+        robot_info.robot_id = robot_id;
+
+        // ros2 time cloud initialization
+        robot_info.point_cloud_input_stamp = rclcpp::Time(0, 0, RCL_ROS_TIME);
+        robot_info.point_cloud_input_time = 0.0;
+
+        // keyframe cloud initialization
+        robot_info.robot_keyframe_cloud.reset(new pcl::PointCloud<PointPose3D>());
+        robot_info.robot_keyframe_cloud_array.clear();
+    }
+    RCLCPP_INFO(this->get_logger(), "Robot initialized with namespace: %s, robot ID: %d",
+                robot_info.robot_namespace.c_str(), robot_info.robot_id);
+
+
 }
 
 void subGraphMapping::performDistributedMapping(
     const Pose3& pose_to,
     const pcl::PointCloud<PointPose3D>::Ptr& frame_to,
     const rclcpp::Time& timestamp) {
-        RCLCPP_INFO(this->get_logger(), "Performing distributed mapping for robot id: %d", robot_id);
+        // Error checks
+        // Keyframe pointcloud data
+        if (!frame_to || frame_to->empty()) {
+            RCLCPP_ERROR(this->get_logger(), "Received an empty or null point cloud for robot id: %d", robot_info.robot_id);
+            return;
+        }
+        // robot keyframe cloud initialisation check
+        if (!robot_info.robot_keyframe_cloud) {
+            RCLCPP_ERROR(this->get_logger(), "Keyframe cloud not properly initialized for robot id: %d", robot_info.robot_id);
+            return;
+        }
+
+        // ===================================================================
+
+        // save keyframe pointcloud into an array
+        RCLCPP_INFO(this->get_logger(), "Performing distributed mapping for robot id: %d", robot_info.robot_id);
+        pcl::copyPointCloud(*frame_to, *robot_info.robot_keyframe_cloud);
+        robot_info.robot_keyframe_cloud_array.push_back(*robot_info.robot_keyframe_cloud);
+        RCLCPP_INFO(this->get_logger(), "Keyframe array size for robot id %d: %zu",  robot_info.robot_id, robot_info.robot_keyframe_cloud_array.size());
+    
+        // save timestamp
+        robot_info.point_cloud_input_stamp = timestamp;
+        robot_info.point_cloud_input_time = timestamp.seconds();
+        RCLCPP_INFO(this->get_logger(), "Point cloud input stamp: %F", timestamp.seconds());
     }
