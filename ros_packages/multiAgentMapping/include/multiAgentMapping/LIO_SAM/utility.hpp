@@ -157,15 +157,19 @@ public:
     {
         std::string robot_namespace = this->get_namespace();
         if(robot_namespace.length() < 1){
+            #ifdef DEV_MODE
             RCLCPP_ERROR(this->get_logger(), "Invalid robot prefix (should be longer than a letter): %s", robot_namespace.c_str());
             rclcpp::shutdown();
+            #endif
         }
         name = robot_namespace.substr(1); // Extract the "/" 
 
         // Ensure last character of the name is a digit
         if(!std::isdigit(name.back())){
+            #ifdef DEV_MODE
             RCLCPP_ERROR(this->get_logger(), "Invalid namespace format: last character is not a digit!");
             rclcpp::shutdown();
+            #endif
         }
 
         // extract last char, convert to int and assign as robot_id

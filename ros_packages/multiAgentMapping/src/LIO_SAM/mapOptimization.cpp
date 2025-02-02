@@ -331,15 +331,17 @@ public:
                 gtsam::Point3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5])
             );
             if(saveFrameNew(pose_to)){
+                #ifdef DEV_MODE
                 RCLCPP_INFO(this->get_logger(), "New keyframe selected. Saving keyframe  with  new function ");
-
+                #endif
                 // create a new keyframe 
                 pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe(new pcl::PointCloud<pcl::PointXYZI>());
                 // populate the keyframe from cloud_deskewed message
                 pcl::fromROSMsg(msgIn->cloud_deskewed, *keyframe);
 
+                #ifdef DEV_MODE
                 RCLCPP_INFO(rclcpp::get_logger("CloudConverter"), "Point cloud converted to keyframe successfully.");
-
+                #endif 
                 subGraphMap.performDistributedMapping(pose_to, keyframe, timeLaserInfoStamp);
             }
 

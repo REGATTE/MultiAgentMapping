@@ -44,8 +44,10 @@ subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
         robot_info.robot_keyframe_cloud.reset(new pcl::PointCloud<PointPose3D>());
         robot_info.robot_keyframe_cloud_array.clear();
     }
+    #ifdef DEV_MODE
     RCLCPP_INFO(this->get_logger(), "Robot initialized with namespace: %s, robot ID: %d",
                 robot_info.robot_namespace.c_str(), robot_info.robot_id);
+    #endif
 
 
 }
@@ -69,13 +71,18 @@ void subGraphMapping::performDistributedMapping(
         // ===================================================================
 
         // save keyframe pointcloud into an array
+        #ifdef DEV_MODE
         RCLCPP_INFO(this->get_logger(), "Performing distributed mapping for robot id: %d", robot_info.robot_id);
+        #endif
         pcl::copyPointCloud(*frame_to, *robot_info.robot_keyframe_cloud);
         robot_info.robot_keyframe_cloud_array.push_back(*robot_info.robot_keyframe_cloud);
+        #ifdef DEV_MODE
         RCLCPP_INFO(this->get_logger(), "Keyframe array size for robot id %d: %zu",  robot_info.robot_id, robot_info.robot_keyframe_cloud_array.size());
-    
+        #endif
         // save timestamp
         robot_info.point_cloud_input_stamp = timestamp;
         robot_info.point_cloud_input_time = timestamp.seconds();
+        #ifdef DEV_MODE
         RCLCPP_INFO(this->get_logger(), "Point cloud input stamp: %F", timestamp.seconds());
+        #endif
     }

@@ -5,6 +5,14 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
+# Automatically define DEV_MODE in Debug builds
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  message(STATUS "Building in Debug mode: enabling DEV_MODE")
+  add_compile_definitions(DEV_MODE)
+else()
+  message(STATUS "Building in Release mode: DEV_MODE is not enabled")
+endif()
+
 # find dependencies
 find_package(ament_cmake REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
