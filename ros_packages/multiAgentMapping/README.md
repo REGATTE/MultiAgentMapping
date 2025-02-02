@@ -5,7 +5,7 @@
 ### Dev Mode
 
 ```bash
-colcon build --packages-select multi_agent_mapping  --cmake-args -DCMAKE_BUILD_TYPE=Debug
+colcon build --packages-select multi_agent_mapping --cmake-args -DCMAKE_BUILD_TYPE=Debug
 ```
 
 ### Release Mode

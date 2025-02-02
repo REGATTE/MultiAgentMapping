@@ -15,6 +15,7 @@
 // gtsam
 #include <gtsam/geometry/Rot3.h>
 #include <gtsam/geometry/Pose3.h>
+#include <gtsam/nonlinear/ISAM2.h>
 
 #include <tf2_eigen/tf2_eigen.hpp>
 
@@ -68,7 +69,7 @@ class subGraphMapping : public rclcpp::Node {
         );
 
     protected:
-        singleRobot robot_info;
+        std::map<int, singleRobot> robot_info;
 
         int number_of_robots_;
 
@@ -77,6 +78,11 @@ class subGraphMapping : public rclcpp::Node {
 
         std::string world_frame_;
         std::string odom_frame_;
+
+        // local pose graph optimization
+        std::unique_ptr<gtsam::ISAM2> isam2;
+        gtsam::Values isam2_initial_values;
+        std::shared_ptr<gtsam::Values> initial_values;
 };
 
 #endif // _SUBGRAPHS_UTILS_H_
