@@ -83,6 +83,13 @@ class subGraphMapping : public rclcpp::Node {
         std::unique_ptr<gtsam::ISAM2> isam2;
         gtsam::Values isam2_initial_values;
         std::shared_ptr<gtsam::Values> initial_values;
+        NonlinearFactorGraph isam2_graph; // local pose graph for isam2
+
+        // noise model
+        noiseModel::Isotropic::shared_ptr prior_noise;
+        noiseModel::Diagonal::shared_ptr odometry_noise;
+
+        std::shared_ptr<NonlinearFactorGraph> local_pose_graph_no_filtering; // pose graph without pcm
 };
 
 #endif // _SUBGRAPHS_UTILS_H_

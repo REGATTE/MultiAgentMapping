@@ -19,14 +19,14 @@
 subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
     std::string robot_name = this->get_namespace();
     if(robot_name.length() < 1){
-            RCLCPP_ERROR(this->get_logger(), "Invalid robot prefix (should be longer than a letter): %s", robot_name.c_str());
+            RCLCPP_ERROR(this->get_logger(), "[subGraphsUtils] -> Invalid robot prefix (should be longer than a letter): %s", robot_name.c_str());
             rclcpp::shutdown();
         }
     robot_namespace = robot_name.substr(1); // Extract the "/"
 
     // Ensure last character of the name is a digit
     if(!std::isdigit(robot_namespace.back())){
-        RCLCPP_ERROR(this->get_logger(), "Invalid namespace format: last character is not a digit!");
+        RCLCPP_ERROR(this->get_logger(), "[subGraphsUtils] -> Invalid namespace format: last character is not a digit!");
         rclcpp::shutdown();
     }
     // extract last char, convert to int and assign as robot_id
@@ -48,9 +48,15 @@ subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
     //Initializze initial values
     initial_values = std::make_shared<gtsam::Values>();
     #ifdef DEV_MODE
-    RCLCPP_INFO(this->get_logger(), "Robot initialized with namespace: %s, robot ID: %d",
+    RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> Robot initialized with namespace: %s, robot ID: %d",
                 robot_info[robot_id].robot_namespace.c_str(), robot_info[robot_id].robot_id);
     #endif
+
+    /*** noise model ***/
+	odometry_noise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
+	prior_noise = noiseModel::Isotropic::Variance(6, 1e-12);
+
+    local_pose_graph_no_filtering = std::make_shared<NonlinearFactorGraph>();
 }
 
 void subGraphMapping::performDistributedMapping(
@@ -64,12 +70,12 @@ void subGraphMapping::performDistributedMapping(
         // Error checks
         // Keyframe pointcloud data
         if (!frame_to || frame_to->empty()) {
-            RCLCPP_ERROR(this->get_logger(), "Received an empty or null point cloud for robot id: %d", robot.robot_id);
+            RCLCPP_ERROR(this->get_logger(), "[subGraphsUtils] -> Received an empty or null point cloud for robot id: %d", robot.robot_id);
             return;
         }
         // robot keyframe cloud initialisation check
         if (!robot.robot_keyframe_cloud) {
-            RCLCPP_ERROR(this->get_logger(), "Keyframe cloud not properly initialized for robot id: %d", robot.robot_id);
+            RCLCPP_ERROR(this->get_logger(), "[subGraphsUtils] -> Keyframe cloud not properly initialized for robot id: %d", robot.robot_id);
             return;
         }
 
@@ -77,40 +83,68 @@ void subGraphMapping::performDistributedMapping(
 
         // save keyframe pointcloud into an array
         #ifdef DEV_MODE
-        RCLCPP_INFO(this->get_logger(), "Performing distributed mapping for robot id: %d", robot.robot_id);
+        RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> Performing distributed mapping for robot id: %d", robot.robot_id);
         #endif
         pcl::copyPointCloud(*frame_to, *robot.robot_keyframe_cloud);
         robot.robot_keyframe_cloud_array.push_back(*robot.robot_keyframe_cloud);
         #ifdef DEV_MODE
-        RCLCPP_INFO(this->get_logger(), "Keyframe array size for robot id %d: %zu",  robot.robot_id, robot.robot_keyframe_cloud_array.size());
+        RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> Keyframe array size for robot id %d: %zu",  robot.robot_id, robot.robot_keyframe_cloud_array.size());
         #endif
         // save timestamp
         robot.point_cloud_input_stamp = timestamp;
         robot.point_cloud_input_time = timestamp.seconds();
         #ifdef DEV_MODE
-        RCLCPP_INFO(this->get_logger(), "Point cloud input stamp: %F", timestamp.seconds());
+        RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> Point cloud input stamp: %F", timestamp.seconds());
         #endif
 
         // Add prior factor
         Pose3 new_pose_to;
         int pose_number = initial_values->size();
         #ifdef DEV_MODE
-        RCLCPP_INFO(this->get_logger(), "Current pose number: %d", pose_number);
+        RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> Current pose number: %d", pose_number);
         #endif
         Symbol current_symbol = Symbol(robot.robot_id, pose_number);
         if(pose_number == 0) {
             #ifdef DEV_MODE
-            RCLCPP_INFO(this->get_logger(), "Pose number is 0, adding prior factor");
+            RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> Pose number is 0, adding prior factor");
             #endif
 
             // save prior value
             robot.prior_odom = pose_to;
 
+            auto prior_factor = PriorFactor<Pose3>(current_symbol, pose_to, prior_noise);
+            prior_noise = noiseModel::Isotropic::Variance(6, 1e-12);
+            #ifdef DEV_MODE
+            Eigen::VectorXd sigmas = prior_noise->sigmas();
+            RCLCPP_INFO(this->get_logger(), 
+                "Prior noise diagonal sigmas: [x: %e, y: %e, z: %e, roll: %e, pitch: %e, yaw: %e]", 
+                sigmas(0), sigmas(1), sigmas(2), sigmas(3), sigmas(4), sigmas(5));
+            #endif
+
+            local_pose_graph_no_filtering->add(prior_factor);
+            isam2_graph.add(prior_factor);
+
+            // add prior value
+            initial_values->insert(current_symbol, pose_to);
+            isam2_initial_values.insert(current_symbol, pose_to);
+            new_pose_to = pose_to;
+
+            RCLCPP_INFO(this->get_logger(), 
+                "[subGraphsUtils] -> createPrior: [%d] Translation: [x: %f, y: %f, z: %f] Rotation: [roll: %f, pitch: %f, yaw: %f]",
+                robot.robot_id, 
+                new_pose_to.translation().x(), 
+                new_pose_to.translation().y(), 
+                new_pose_to.translation().z(), 
+                new_pose_to.rotation().roll(), 
+                new_pose_to.rotation().pitch(), 
+                new_pose_to.rotation().yaw()
+            );
+
 
         } else {
             #ifdef DEV_MODE
-            RCLCPP_INFO(this->get_logger(), "Pose number is greater that 0, adding odom factor");
+            RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> Pose number is greater that 0, adding odom factor");
             #endif
-        }
+        };
 
     }
