@@ -91,9 +91,9 @@ target_link_libraries(${PROJECT_NAME}_imuPreintegration gtsam "${cpp_typesupport
 add_executable(${PROJECT_NAME}_mapOptimization src/LIO_SAM/mapOptimization.cpp)
 ament_target_dependencies(${PROJECT_NAME}_mapOptimization rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL GTSAM)
 if (OpenMP_CXX_FOUND)
-  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX distributed_mapping_lib)
+  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX distributed_mapping_lib distributed_mapper_colcon::distributed_mapper)
 else()
-  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" distributed_mapping_lib)
+  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" distributed_mapping_lib distributed_mapper_colcon::distributed_mapper)
 endif()
 
 install(
