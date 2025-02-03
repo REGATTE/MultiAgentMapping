@@ -58,6 +58,11 @@ subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
 	prior_noise = noiseModel::Isotropic::Variance(6, 1e-12);
 
     local_pose_graph_no_filtering = std::make_shared<NonlinearFactorGraph>();  
+
+    gtsam::ISAM2Params params;
+    params.relinearizeThreshold = 0.1;  // Customize as needed
+    params.relinearizeSkip = 1;
+    isam2 = new gtsam::ISAM2(params);
 }
 
 gtsam::Pose3 subGraphMapping::pclPointTogtsamPose3(PointPose6D point){
@@ -102,6 +107,13 @@ void subGraphMapping::processKeyframeForMapping(
         if (!robot.robot_keyframe_cloud) {
             RCLCPP_ERROR(this->get_logger(), "[subGraphsUtils] -> Keyframe cloud not properly initialized for robot id: %d", robot.robot_id);
             return;
+        }
+
+        // Check if `isam2` was successfully initialized
+        if (isam2) {
+            RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> ISAM2 successfully initialized.");
+        } else {
+            RCLCPP_ERROR(this->get_logger(), "[subGraphsUtils] -> Failed to initialize ISAM2.");
         }
 
         // ===================================================================
@@ -150,6 +162,9 @@ void subGraphMapping::processKeyframeForMapping(
 
             local_pose_graph_no_filtering->add(prior_factor);
             isam2_graph.add(prior_factor);
+            #ifdef DEV_MODE
+            RCLCPP_INFO(this->get_logger(),"[subGraphsUtils] -> Added prior factor to isam2_graph");
+            #endif
 
             // add prior value to the initial values
             initial_values->insert(current_symbol, pose_to);
@@ -205,7 +220,7 @@ void subGraphMapping::processKeyframeForMapping(
 
             // Log the details of the odometry factor
             RCLCPP_INFO(this->get_logger(), 
-            "createOdom:[%d] [%d-%d] -- Previous Pose: [x: %f, y: %f, z: %f, roll: %f, pitch: %f, yaw: %f], New Pose: [x: %f, y: %f, z: %f, roll: %f, pitch: %f, yaw: %f]",
+            "[subGraphsUtils] -> createOdom:[%d] [%d-%d] -- Previous Pose: [x: %f, y: %f, z: %f, roll: %f, pitch: %f, yaw: %f], New Pose: [x: %f, y: %f, z: %f, roll: %f, pitch: %f, yaw: %f]",
                 robot.robot_id, pose_number - 1, pose_number,
                 pose_from.translation().x(), pose_from.translation().y(), pose_from.translation().z(),
                 pose_from.rotation().roll(), pose_from.rotation().pitch(), pose_from.rotation().yaw(),
@@ -216,13 +231,27 @@ void subGraphMapping::processKeyframeForMapping(
 
         // optimization
         #ifdef DEV_MODE
-        isam2_graph.print("GTSAM Graph:\n");
+        isam2_graph.print("[subGraphsUtils] -> GTSAM Graph:\n");
         #endif
-        // isam2 incremental optimization - Update the iSAM2 optimizer with the current factor graph and initial values
-        isam2->update(isam2_graph, isam2_initial_values);
-        // Clear the factor graph to avoid memory buildup
-        isam2_graph.resize(0);
-        // Clear the initial guesses to prepare for new keyframes
-        isam2_initial_values.clear();
+        try{
+            isam2->update(isam2_graph, isam2_initial_values);
+            #ifdef DEV_MODE
+            RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> isam2 updated with isam2_graph and isam2_initial_values");
+            #endif
 
+            isam2_graph.resize(0);
+            #ifdef DEV_MODE
+            RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> isam2_graph resized to 0, making space for new values");
+            #endif
+
+            isam2_initial_values.clear();
+            #ifdef DEV_MODE
+            RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> isam2_initial_values cleared to 0, making space for new values");
+            #endif
+
+        } catch (const std::exception& e){
+            std::cerr << "[subGraphsUtils] -> Exception occurred during ISAM2 update: " << e.what() << std::endl;
+        } catch(...){
+            std::cout << "[subGraphsUtils] -> An unexpected error occurred. Please try again.\n";
+        }
     }
