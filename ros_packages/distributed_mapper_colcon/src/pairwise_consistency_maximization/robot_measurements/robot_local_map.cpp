@@ -10,7 +10,12 @@ namespace robot_measurements {
             trajectory_ = trajectory;                    
         }
     
-    RobotLocalMap::RobotLocalMap(): RobotMeasurements(){}
+    RobotLocalMap::RobotLocalMap(): RobotMeasurements(){
+
+    }
+
+    // destructor
+    RobotLocalMap::~RobotLocalMap() = default;
 
     void RobotLocalMap::addTransform(const gtsam::BetweenFactor<gtsam::Pose3>& factor, const gtsam::Matrix& covariance_matrix) {
             RobotMeasurements::addTransform(factor, covariance_matrix);

@@ -12,6 +12,9 @@ namespace robot_measurements {
      */
     class RobotLocalMap : public RobotMeasurements {
     public:
+
+        virtual ~RobotLocalMap();
+
         /**
          * @brief Constructor that initializes the robot local map with transforms and loop closures.
          * 

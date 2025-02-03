@@ -166,5 +166,8 @@ std::tuple<double, double, int> runDistributedMapper(const size_t& nr_robots, co
     cout << "Graph is disconnected: " << endl;
     evaluation_utils::copyInitial(nr_robots, data_dir);
   }
+  // fallback return if optimization or graph is disconnected
+  return std::make_tuple(0.0, 0.0, 0);
+
 }
 }

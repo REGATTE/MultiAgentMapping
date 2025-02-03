@@ -2,6 +2,8 @@
 #define _SUBGRAPHS_UTILS_H_
 
 #include "multiAgentMapping/LIO_SAM/utility.hpp"
+#include "distributed_mapper/distributed_mapper.hpp"
+#include "distributed_mapper/distributed_mapper_utils.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>

@@ -201,7 +201,7 @@ void subGraphMapping::processKeyframeForMapping(
 
             // Save factor in local map for PCM
             auto new_factor = boost::dynamic_pointer_cast<BetweenFactor<Pose3>>(odom_factor);
-            robot_local_map.addTransform(*new_factor, new_pose_to);
+            robot_local_map.addTransform(*new_factor, covariance);
 
             // Log the details of the odometry factor
             RCLCPP_INFO(this->get_logger(), 

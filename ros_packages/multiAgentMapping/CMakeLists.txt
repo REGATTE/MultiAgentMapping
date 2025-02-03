@@ -37,6 +37,7 @@ find_package(PCL REQUIRED)
 find_package(GTSAM REQUIRED)
 find_package(Eigen REQUIRED)
 find_package(OpenMP REQUIRED)
+find_package(distributed_mapper_colcon REQUIRED)
 
 # Common dependencies
 set(COMMON_DEPENDENCIES 
@@ -61,6 +62,7 @@ set(COMMON_DEPENDENCIES
 include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${PCL_INCLUDE_DIRS}
+  ${distributed_mapper_colcon_INCLUDE_DIRS}
 )
 
 rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" DEPENDENCIES std_msgs sensor_msgs)

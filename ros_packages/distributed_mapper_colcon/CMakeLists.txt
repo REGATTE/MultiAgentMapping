@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5)
-project(distributed_mapper)
+project(distributed_mapper_colcon)
 
 # Set C++ standard and build type
 set(CMAKE_CXX_STANDARD 14)
