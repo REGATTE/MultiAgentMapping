@@ -68,6 +68,8 @@ class subGraphMapping : public rclcpp::Node {
             const rclcpp::Time& timestamp
         );
 
+        gtsam::Pose3 pclPointTogtsamPose3(PointPose6D point);
+
     protected:
         std::map<int, singleRobot> robot_info;
 
@@ -79,17 +81,25 @@ class subGraphMapping : public rclcpp::Node {
         std::string world_frame_;
         std::string odom_frame_;
 
+        pcl::PointCloud<PointPose3D>::Ptr keyposes_cloud_3d; // 3-dof keyposes in local frame
+		pcl::PointCloud<PointPose6D>::Ptr keyposes_cloud_6d; // 6-dof keyposes in local frame
+
         // local pose graph optimization
         std::unique_ptr<gtsam::ISAM2> isam2;
         gtsam::Values isam2_initial_values;
         std::shared_ptr<gtsam::Values> initial_values;
         NonlinearFactorGraph isam2_graph; // local pose graph for isam2
+        boost::shared_ptr<NonlinearFactorGraph> local_pose_graph; // local pose graph for distributed mapping
 
         // noise model
         noiseModel::Isotropic::shared_ptr prior_noise;
         noiseModel::Diagonal::shared_ptr odometry_noise;
 
         std::shared_ptr<NonlinearFactorGraph> local_pose_graph_no_filtering; // pose graph without pcm
+
+        // distributed pairwise consistency maximization
+		robot_measurements::RobotLocalMap robot_local_map; // local loop closures and transform 
+		robot_measurements::RobotLocalMap robot_local_map_backup; // backups in case of abort
 };
 
 #endif // _SUBGRAPHS_UTILS_H_
