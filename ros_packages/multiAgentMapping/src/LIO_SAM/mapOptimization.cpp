@@ -1628,7 +1628,7 @@ public:
         addLoopFactor();
 
         cout << "****************************************************" << endl;
-        gtSAMgraph.print("GTSAM Graph:\n");
+        gtSAMgraph.print("[mapOptimization] -> GTSAM Graph:\n");
 
         // update iSAM
         isam->update(gtSAMgraph, initialEstimate);

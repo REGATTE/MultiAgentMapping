@@ -2,6 +2,8 @@
 #define _SUBGRAPHS_UTILS_H_
 
 #include "multiAgentMapping/LIO_SAM/utility.hpp"
+#include "distributed_mapper/distributed_mapper.hpp"
+#include "distributed_mapper/distributed_mapper_utils.hpp"
 
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
@@ -85,7 +87,7 @@ class subGraphMapping : public rclcpp::Node {
 		pcl::PointCloud<PointPose6D>::Ptr keyposes_cloud_6d; // 6-dof keyposes in local frame
 
         // local pose graph optimization
-        std::unique_ptr<gtsam::ISAM2> isam2;
+        gtsam::ISAM2* isam2;
         gtsam::Values isam2_initial_values;
         std::shared_ptr<gtsam::Values> initial_values;
         NonlinearFactorGraph isam2_graph; // local pose graph for isam2
