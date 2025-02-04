@@ -64,6 +64,14 @@ subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
 
     keyposes_cloud_3d.reset(new pcl::PointCloud<PointPose3D>());
     keyposes_cloud_6d.reset(new pcl::PointCloud<PointPose6D>());
+    copy_keyposes_cloud_3d.reset(new pcl::PointCloud<PointPose3D>());
+    copy_keyposes_cloud_6d.reset(new pcl::PointCloud<PointPose6D>());
+
+    global_path.poses.clear();
+	local_path.poses.clear();
+
+
+    intra_robot_loop_close_flag = false;
 
     /*** noise model ***/
 	odometry_noise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
@@ -330,4 +338,91 @@ void subGraphMapping::updateGlobalPath(const gtsam::Pose3& pose) {
     pose_stamped.pose.orientation.w = pose.rotation().toQuaternion().w();
 
     global_path.poses.push_back(pose_stamped);
+}
+
+/**
+ * @brief Updates the key poses and local path based on current pose estimates.
+ *
+ * This function updates the robot's key pose point clouds (3D and 6D), local path,
+ * and key pose estimates using the latest ISAM2 estimates. If an intra-robot loop
+ * closure is detected, it clears the local path and processes the new key poses.
+ *
+ * @return true if updates were made, false otherwise.
+ */
+bool subGraphMapping::updatePoses(){
+    // access the correct robot data using its robot_id
+    singleRobot& robot = robot_info[robot_id]; 
+    // Return value indicating if updates were made
+    bool return_value = false;
+
+    #ifdef DEV_MODE
+    RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> checking if intra robot loop closure has occured for [%d]", robot.robot_id);
+    #endif
+
+    // Check if keyposes_cloud_3d is empty
+    if(keyposes_cloud_3d->empty()){
+        return return_value; // No updates if the 3D key pose cloud is empty
+    }
+    // If an intra-robot loop closure has been detected, process the updates
+    if(intra_robot_loop_close_flag){
+        // Clear the local path to prepare for updated key poses
+        local_path.poses.clear();
+
+        // Iterate through the current ISAM2 estimates and update key poses
+        for (const Values::ConstKeyValuePair &key_value: isam2_current_estimate){
+            // Retrieve the key and its corresponding index in the point cloud
+            Symbol key = key_value.key;
+            int index = key.index();
+
+            // Retrieve the pose corresponding to this key
+            Pose3 pose = isam2_current_estimate.at<Pose3>(key);
+
+            // Update the 3D key pose cloud with the new translation
+            keyposes_cloud_3d->points[index].x = pose.translation().x();
+            keyposes_cloud_3d->points[index].y = pose.translation().y();
+            keyposes_cloud_3d->points[index].z = pose.translation().z();
+
+            // Update the 6D key pose cloud with both position and orientation
+            keyposes_cloud_6d->points[index].x = keyposes_cloud_3d->points[index].x;
+            keyposes_cloud_6d->points[index].y = keyposes_cloud_3d->points[index].y;
+            keyposes_cloud_6d->points[index].z = keyposes_cloud_3d->points[index].z;
+            keyposes_cloud_6d->points[index].roll = pose.rotation().roll();
+            keyposes_cloud_6d->points[index].pitch = pose.rotation().pitch();
+            keyposes_cloud_6d->points[index].yaw = pose.rotation().yaw();
+
+            // Add the updated pose to the local path
+            updateLocalPath(keyposes_cloud_6d->points[index]);
+        }
+
+        // Reset the intra-robot loop closre flag and set return value to true
+        intra_robot_loop_close_flag = false;
+        return_value = true;
+        #ifdef DEV_MODE
+        RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> updated poses");
+        #endif
+    }
+
+    // copy the updated keyposes
+    *copy_keyposes_cloud_3d = *keyposes_cloud_3d;
+    *copy_keyposes_cloud_6d = *keyposes_cloud_6d;
+
+    // update the most recent keypose, representing robots current position
+    isam2_keypose_estimate = pclPointTogtsamPose3(keyposes_cloud_6d->back());
+    return return_value;
+}
+
+/** 
+* @brief The poses are updated after the intra-robot loop closure
+* Those new poses are saved under isam2_keypose_estimate, which is 
+* returned by this function.
+* 
+* If the poses arent updated by the above function in isam2_keypose_estimate,
+* then it returns the current poses saved earlier.
+*/
+Pose3 subGraphMapping::getNewEstimate(){
+    return isam2_keypose_estimate;
+}
+
+void subGraphMapping::makeLiDARIrisDescriptors(){
+
 }

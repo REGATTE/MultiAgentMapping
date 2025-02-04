@@ -127,6 +127,7 @@ public:
     double timeLaserInfoCur;
 
     float transformTobeMapped[6];
+    float trial_transformTobeMapped[6];
 
     std::mutex mtx;
     std::mutex mtxLoopInfo;
@@ -361,6 +362,30 @@ public:
                  * @return void
                  */
                 subGraphMap.processKeyframeForMapping(pose_to, keyframe, timeLaserInfoStamp);
+
+                if (subGraphMap.updatePoses()){
+                    RCLCPP_INFO(this->get_logger(), "[MapOptimization - subGraphsUtils] -> IntraRobot loop closure is detected");
+                    // Clear map caches
+                    // laserCloudMapContainer.clear();
+                } else {
+                    RCLCPP_INFO(this->get_logger(), "[MapOptimization - subGraphsUtils] -> IntraRobot loop closure is not detected");
+                }
+
+                // get the correct current pose of the robot
+                gtsam::Pose3 new_estimate = subGraphMap.getNewEstimate();
+                // the corrected pose is stored back into the transformTobeMapped
+                // ensuring next iteration of slam starts with the corrected estimate
+                /*
+                transformTobeMapped[0] = new_estimate.rotation().roll();
+                transformTobeMapped[1] = new_estimate.rotation().pitch();
+                transformTobeMapped[2] = new_estimate.rotation().yaw();
+                transformTobeMapped[3] = new_estimate.translation().x();
+                transformTobeMapped[4] = new_estimate.translation().y();
+                transformTobeMapped[5] = new_estimate.translation().z();
+                */
+
+                // use the above saved keyframe cloud to build descriptors
+                subGraphMap.makeLiDARIrisDescriptors(); 
             }
 
             saveKeyFramesAndFactor();

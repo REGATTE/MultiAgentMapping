@@ -81,6 +81,12 @@ class subGraphMapping : public rclcpp::Node {
             const Pose3& pose
         );
 
+        bool updatePoses();
+
+        Pose3 getNewEstimate();
+
+        void makeLiDARIrisDescriptors();
+
         gtsam::Pose3 pclPointTogtsamPose3(PointPose6D point);
 
     protected:
@@ -99,6 +105,14 @@ class subGraphMapping : public rclcpp::Node {
 
         pcl::PointCloud<PointPose3D>::Ptr keyposes_cloud_3d; // 3-dof keyposes in local frame
 		pcl::PointCloud<PointPose6D>::Ptr keyposes_cloud_6d; // 6-dof keyposes in local frame
+        pcl::PointCloud<PointPose3D>::Ptr copy_keyposes_cloud_3d; // copy of local 3-dof keyposes in local frame
+		pcl::PointCloud<PointPose6D>::Ptr copy_keyposes_cloud_6d; // copy of local 6-dof keyposes in local frame
+
+        // descriptors
+        pcl::PointCloud<PointPose3D>::Ptr cloud_for_descriptors; // input cloud for descriptors
+        
+
+        bool intra_robot_loop_close_flag;
 
         // local pose graph optimization
         gtsam::ISAM2* isam2;

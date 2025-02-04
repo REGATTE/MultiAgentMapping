@@ -65,7 +65,7 @@ include_directories(
   ${distributed_mapper_colcon_INCLUDE_DIRS}
 )
 
-rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" DEPENDENCIES std_msgs sensor_msgs)
+rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "msg/GlobalDescriptor.msg" "srv/SaveMap.srv" DEPENDENCIES std_msgs sensor_msgs nav_msgs geometry_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
 # build library from src/Distributed_Mapping
