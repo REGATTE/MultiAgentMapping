@@ -73,8 +73,8 @@ add_library(distributed_mapping_lib
   src/Distributed_Mapping/subGraphsUtils.cpp
 )
 target_include_directories(distributed_mapping_lib PUBLIC ${rclcpp_INCLUDE_DIRS})
-ament_target_dependencies(distributed_mapping_lib ${COMMON_DEPENDENCIES} GTSAM Eigen3)
-target_link_libraries(distributed_mapping_lib  ${PCL_LIBRARIES}  ${OpenCV_LIBRARIES}  ${Boost_LIBRARIES}  ${GTSAM_LIBRARIES}  OpenMP::OpenMP_CXX)
+ament_target_dependencies(distributed_mapping_lib ${COMMON_DEPENDENCIES} GTSAM Eigen3 rosidl_default_runtime)
+target_link_libraries(distributed_mapping_lib  ${PCL_LIBRARIES}  ${OpenCV_LIBRARIES}  ${Boost_LIBRARIES}  ${GTSAM_LIBRARIES}  OpenMP::OpenMP_CXX "${cpp_typesupport_target}")
 
 add_executable(${PROJECT_NAME}_featureExtraction src/LIO_SAM/featureExtraction.cpp)
 ament_target_dependencies(${PROJECT_NAME}_featureExtraction rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL)

@@ -8,6 +8,8 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
+#include "multi_agent_mapping/msg/global_descriptor.hpp"
+
 #include <nav_msgs/msg/odometry.hpp>
 #include <nav_msgs/msg/path.hpp>
 
@@ -110,7 +112,9 @@ class subGraphMapping : public rclcpp::Node {
 
         // descriptors
         pcl::PointCloud<PointPose3D>::Ptr cloud_for_descriptors; // input cloud for descriptors
+        deque<pair<int, multi_agent_mapping::msg::GlobalDescriptor>> store_descriptors;
         
+        multi_agent_mapping::msg::GlobalDescriptor global_descriptor_msg; // descriptor message
 
         bool intra_robot_loop_close_flag;
 
