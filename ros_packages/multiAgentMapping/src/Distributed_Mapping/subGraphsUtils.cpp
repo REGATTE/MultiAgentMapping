@@ -17,6 +17,9 @@
 
 #include <gtsam/nonlinear/ISAM2.h>
 
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2_geometry_msgs/tf2_geometry_msgs.hpp> 
+
 subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
     std::string robot_name = this->get_namespace();
     if(robot_name.length() < 1){
@@ -32,6 +35,12 @@ subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
     }
     // extract last char, convert to int and assign as robot_id
     robot_id = robot_namespace.back() - '0';
+
+    // get frames
+    this->declare_parameter<std::string>("world_frame", "world");
+    this->declare_parameter<std::string>("odom_frame", "odom");
+    this->get_parameter("world_frame", world_frame_);
+    this->get_parameter("odom_frame", odom_frame_);
 
     if(robot_id != -1){
         singleRobot& robot = robot_info[robot_id];
@@ -52,6 +61,9 @@ subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
     RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> Robot initialized with namespace: %s, robot ID: %d",
                 robot_info[robot_id].robot_namespace.c_str(), robot_info[robot_id].robot_id);
     #endif
+
+    keyposes_cloud_3d.reset(new pcl::PointCloud<PointPose3D>());
+    keyposes_cloud_6d.reset(new pcl::PointCloud<PointPose6D>());
 
     /*** noise model ***/
 	odometry_noise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
@@ -233,25 +245,89 @@ void subGraphMapping::processKeyframeForMapping(
         #ifdef DEV_MODE
         isam2_graph.print("[subGraphsUtils] -> GTSAM Graph:\n");
         #endif
-        try{
-            isam2->update(isam2_graph, isam2_initial_values);
-            #ifdef DEV_MODE
-            RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> isam2 updated with isam2_graph and isam2_initial_values");
-            #endif
+        /*
+        @brief If the below code fails, the whole of MapOptimization would fail as this will cause a segFault.
+        * To fix, make sure isam2 is properly initialised. There is a logger for it above, to check for its initialization status
+        */
+        isam2->update(isam2_graph, isam2_initial_values);
+        isam2_graph.resize(0);
+        isam2_initial_values.clear();
+        isam2_current_estimate = isam2->calculateEstimate();
+        isam2_keypose_estimate = isam2_current_estimate.at<Pose3>(current_symbol);
+        #ifdef DEV_MODE
+        RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> isam2 updated with isam2_graph and isam2_initial_values");
+        #endif
 
-            isam2_graph.resize(0);
-            #ifdef DEV_MODE
-            RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> isam2_graph resized to 0, making space for new values");
-            #endif
+        // save pose in local frame
+        static PointPose3D pose_3d;
+        pose_3d.x = isam2_keypose_estimate.translation().x();     
+        pose_3d.y = isam2_keypose_estimate.translation().y();   
+        pose_3d.z = isam2_keypose_estimate.translation().z();   
+        pose_3d.intensity = pose_number; // keyframe index
+        keyposes_cloud_3d->push_back(pose_3d);
+        #ifdef DEV_MODE
+        RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> keyposes_cloud_3d updated");
+        #endif
 
-            isam2_initial_values.clear();
-            #ifdef DEV_MODE
-            RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> isam2_initial_values cleared to 0, making space for new values");
-            #endif
+        static PointPose6D pose_6d;
+        pose_6d.x = pose_3d.x;
+        pose_6d.y = pose_3d.y;
+        pose_6d.z = pose_3d.z;
+        pose_6d.intensity = pose_3d.intensity;
+        pose_6d.roll = isam2_keypose_estimate.rotation().roll();
+        pose_6d.pitch = isam2_keypose_estimate.rotation().pitch();
+        pose_6d.yaw = isam2_keypose_estimate.rotation().yaw();
+        pose_6d.time = robot_info[robot_id].point_cloud_input_time; // keyframe timestamp
+        keyposes_cloud_6d->push_back(pose_6d);
+        #ifdef DEV_MODE
+        RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> keyposes_cloud_6d updated");
+        #endif
 
-        } catch (const std::exception& e){
-            std::cerr << "[subGraphsUtils] -> Exception occurred during ISAM2 update: " << e.what() << std::endl;
-        } catch(...){
-            std::cout << "[subGraphsUtils] -> An unexpected error occurred. Please try again.\n";
-        }
+        // save path for visualization
+        updateLocalPath(pose_6d);
+        #ifdef DEV_MODE
+        RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> saved poses in local frame for visualization");
+        #endif
+
+        updateGlobalPath(new_pose_to);
+        #ifdef DEV_MODE
+        RCLCPP_INFO(this->get_logger(), "[subGraphsUtils] -> saved poses in global frame for visualization");
+        #endif
     }
+
+void subGraphMapping::updateLocalPath(const PointPose6D& pose){
+    // Create a PoseStamped message
+    static geometry_msgs::msg::PoseStamped pose_stamped;
+
+    pose_stamped.header.stamp = rclcpp::Clock().now();
+    pose_stamped.header.frame_id = world_frame_;
+    pose_stamped.pose.position.x = pose.x;
+    pose_stamped.pose.position.y = pose.y;
+    pose_stamped.pose.position.z = pose.z;
+
+    tf2::Quaternion q;
+    q.setRPY(pose.roll, pose.pitch, pose.yaw);
+    pose_stamped.pose.orientation = tf2::toMsg(q);
+
+    // Add the pose to thje local path
+    local_path.poses.push_back(pose_stamped);
+} 
+
+void subGraphMapping::updateGlobalPath(const gtsam::Pose3& pose) {
+    static geometry_msgs::msg::PoseStamped pose_stamped;
+    
+    pose_stamped.header.stamp = rclcpp::Clock().now();
+    pose_stamped.header.frame_id = world_frame_;
+    
+    // Corrected calls using x(), y(), z() methods explicitly
+    pose_stamped.pose.position.x = static_cast<double>(pose.translation().x());
+    pose_stamped.pose.position.y = static_cast<double>(pose.translation().y());
+    pose_stamped.pose.position.z = static_cast<double>(pose.translation().z());
+
+    pose_stamped.pose.orientation.x = pose.rotation().toQuaternion().x();
+    pose_stamped.pose.orientation.y = pose.rotation().toQuaternion().y();
+    pose_stamped.pose.orientation.z = pose.rotation().toQuaternion().z();
+    pose_stamped.pose.orientation.w = pose.rotation().toQuaternion().w();
+
+    global_path.poses.push_back(pose_stamped);
+}

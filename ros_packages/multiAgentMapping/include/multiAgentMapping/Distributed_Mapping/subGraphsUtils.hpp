@@ -8,6 +8,9 @@
 #include <rclcpp/rclcpp.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
+#include <nav_msgs/msg/odometry.hpp>
+#include <nav_msgs/msg/path.hpp>
+
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/common/common.h>
@@ -70,6 +73,14 @@ class subGraphMapping : public rclcpp::Node {
             const rclcpp::Time& timestamp
         );
 
+        void updateLocalPath(
+            const PointPose6D& pose
+        );
+
+        void updateGlobalPath(
+            const Pose3& pose
+        );
+
         gtsam::Pose3 pclPointTogtsamPose3(PointPose6D point);
 
     protected:
@@ -83,15 +94,21 @@ class subGraphMapping : public rclcpp::Node {
         std::string world_frame_;
         std::string odom_frame_;
 
+        nav_msgs::msg::Path local_path; // path in local frame
+		nav_msgs::msg::Path global_path; // path in global frame
+
         pcl::PointCloud<PointPose3D>::Ptr keyposes_cloud_3d; // 3-dof keyposes in local frame
 		pcl::PointCloud<PointPose6D>::Ptr keyposes_cloud_6d; // 6-dof keyposes in local frame
 
         // local pose graph optimization
         gtsam::ISAM2* isam2;
-        gtsam::Values isam2_initial_values;
+        NonlinearFactorGraph isam2_graph;               // local pose graph for isam2
+        gtsam::Values isam2_initial_values;             // local initial values for isam2
+        gtsam::Values isam2_current_estimate;          // current estimates for isam2
+        Pose3 isam2_keypose_estimate;                   // Keypose estimate for isam2
         std::shared_ptr<gtsam::Values> initial_values;
-        NonlinearFactorGraph isam2_graph; // local pose graph for isam2
-        boost::shared_ptr<NonlinearFactorGraph> local_pose_graph; // local pose graph for distributed mapping
+
+        std::shared_ptr<NonlinearFactorGraph> local_pose_graph; // local pose graph for distributed mapping
 
         // noise model
         noiseModel::Isotropic::shared_ptr prior_noise;
