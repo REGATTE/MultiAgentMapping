@@ -272,6 +272,8 @@ public:
         laserCloudOri.reset(new pcl::PointCloud<PointType>());
         coeffSel.reset(new pcl::PointCloud<PointType>());
 
+        RCLCPP_INFO(this->get_logger(), "[mapOptimization] -> LiDAR current n_scan: [%d]", N_SCAN);
+
         laserCloudOriCornerVec.resize(N_SCAN * Horizon_SCAN);
         coeffSelCornerVec.resize(N_SCAN * Horizon_SCAN);
         laserCloudOriCornerFlag.resize(N_SCAN * Horizon_SCAN);
