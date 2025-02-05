@@ -77,6 +77,7 @@ subGraphMapping::subGraphMapping() : rclcpp::Node("sub_graph_mapping") {
 	odometry_noise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
 	prior_noise = noiseModel::Isotropic::Variance(6, 1e-12);
 
+    local_pose_graph = std::make_shared<NonlinearFactorGraph>();
     local_pose_graph_no_filtering = std::make_shared<NonlinearFactorGraph>();  
 
     gtsam::ISAM2Params params;
