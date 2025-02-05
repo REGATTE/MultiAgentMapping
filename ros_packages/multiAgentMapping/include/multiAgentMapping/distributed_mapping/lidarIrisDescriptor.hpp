@@ -17,6 +17,7 @@
 // file iostream
 #include <fstream>
 #include <iostream>
+#include <string>
 
 using namespace std;
 
@@ -50,15 +51,15 @@ class lidar_iris_descriptor {
         std::pair<Eigen::VectorXf, cv::Mat1b> getIris(
 			const pcl::PointCloud<pcl::PointXYZI> &cloud);
         
-        inline cv::Mat circRowShift(
+        inline cv::Mat circularRowShift(
 			const cv::Mat &src,
 			int shift_m_rows);
 
-		inline cv::Mat circColShift(
+		inline cv::Mat circularColShift(
 			const cv::Mat &src,
 			int shift_n_cols);
 
-		cv::Mat circShift(
+		cv::Mat circularShift(
 			const cv::Mat &src,
 			int shift_m_rows,
 			int shift_n_cols);
