@@ -29,6 +29,7 @@
         "memory": "cpp",
         "future": "cpp",
         "optional": "cpp",
-        "algorithm": "cpp"
+        "algorithm": "cpp",
+        "fstream": "cpp"
     }
 }
