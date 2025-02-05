@@ -40,15 +40,6 @@ include_directories(
 rosidl_generate_interfaces(${PROJECT_NAME} "msg/CloudInfo.msg" "srv/SaveMap.srv" DEPENDENCIES std_msgs sensor_msgs)
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
 
-# distributed slam library
-add_library(distributed_slam
-  src/distributedMapping/distributedMapping.cpp
-  src/distributedMapping/subGraphParams.cpp
-)
-target_include_directories(distributed_slam PUBLIC ${rclcpp_INCLUDE_DIRS})
-ament_target_dependencies(distributed_slam rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL GTSAM Eigen3)
-target_link_libraries(distributed_slam   ${PCL_LIBRARIES}  ${OpenCV_LIBRARIES}  ${Boost_LIBRARIES}  ${GTSAM_LIBRARIES}  OpenMP::OpenMP_CXX)
-
 # build LIO SAM Executables
 add_executable(${PROJECT_NAME}_featureExtraction src/LIO_SAM/featureExtraction.cpp)
 ament_target_dependencies(${PROJECT_NAME}_featureExtraction rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL)
@@ -65,9 +56,9 @@ target_link_libraries(${PROJECT_NAME}_imuPreintegration gtsam "${cpp_typesupport
 add_executable(${PROJECT_NAME}_mapOptimization src/LIO_SAM/mapOptimization.cpp)
 ament_target_dependencies(${PROJECT_NAME}_mapOptimization rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL GTSAM)
 if (OpenMP_CXX_FOUND)
-  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX distributed_slam)
+  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX)
 else()
-  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" distributed_slam)
+  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}")
 endif()
 
 install(
@@ -88,12 +79,6 @@ install(
     ${PROJECT_NAME}_imuPreintegration
     ${PROJECT_NAME}_mapOptimization
   DESTINATION lib/${PROJECT_NAME}
-)
-
-# Install Library
-install(
-  TARGETS distributed_slam
-  DESTINATION lib
 )
 
 install(
