@@ -32,6 +32,14 @@ find_package(OpenMP REQUIRED)
 find_package(Boost REQUIRED)
 find_package(distributed_mapper_colcon REQUIRED)
 
+# Find and link libnabo
+find_path(LIBNABO_INCLUDE_DIRS "nabo/nabo.h" PATHS /usr/local/include)
+find_library(LIBNABO_LIBRARIES NAMES nabo PATHS /usr/local/lib)
+
+if(NOT LIBNABO_INCLUDE_DIRS OR NOT LIBNABO_LIBRARIES)
+  message(FATAL_ERROR "libnabo not found. Ensure it is installed in /usr/local.")
+endif()
+
 # Common dependencies
 set(COMMON_DEPENDENCIES 
   rclcpp 
@@ -59,6 +67,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/include
   ${PCL_INCLUDE_DIRS}
   ${distributed_mapper_colcon_INCLUDE_DIRS}
+  ${libnabo_INCLUDE_DIRS}
 )
 
 # build library from src/Distributed_Mapping
@@ -68,7 +77,7 @@ add_library(distributed_mapping_lib
 
 target_include_directories(distributed_mapping_lib PUBLIC ${rclcpp_INCLUDE_DIRS})
 ament_target_dependencies(distributed_mapping_lib ${COMMON_DEPENDENCIES} GTSAM Eigen3 rosidl_default_runtime)
-target_link_libraries(distributed_mapping_lib  ${PCL_LIBRARIES}  ${OpenCV_LIBRARIES}  ${Boost_LIBRARIES}  ${GTSAM_LIBRARIES}  OpenMP::OpenMP_CXX "${cpp_typesupport_target}")
+target_link_libraries(distributed_mapping_lib  ${PCL_LIBRARIES}  ${OpenCV_LIBRARIES}  ${Boost_LIBRARIES}  ${GTSAM_LIBRARIES} ${libnabo_LIBRARIES} ${libnabo_LIBRARIES} OpenMP::OpenMP_CXX "${cpp_typesupport_target}")
 
 # build LIO SAM Executables
 add_executable(${PROJECT_NAME}_featureExtraction src/LIO_SAM/featureExtraction.cpp)
