@@ -24,6 +24,11 @@
         "unordered_map": "cpp",
         "unordered_set": "cpp",
         "vector": "cpp",
-        "ostream": "cpp"
+        "ostream": "cpp",
+        "any": "cpp",
+        "memory": "cpp",
+        "future": "cpp",
+        "optional": "cpp",
+        "algorithm": "cpp"
     }
 }
