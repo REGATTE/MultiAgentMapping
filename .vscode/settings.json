@@ -30,6 +30,8 @@
         "future": "cpp",
         "optional": "cpp",
         "algorithm": "cpp",
-        "fstream": "cpp"
+        "fstream": "cpp",
+        "cmath": "cpp",
+        "complex": "cpp"
     }
 }
