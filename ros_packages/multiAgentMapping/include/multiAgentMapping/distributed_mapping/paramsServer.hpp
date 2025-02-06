@@ -3,7 +3,11 @@
 
 #include <rclcpp/rclcpp.hpp>
 #include <geometry_msgs/msg/transform.hpp>
+#include <std_msgs/msg/int8.hpp>
 // msg
+#include "multi_agent_mapping/msg/neighbor_estimate.hpp"
+#include "multi_agent_mapping/msg/loop_info.hpp"
+#include "multi_agent_mapping/msg/global_descriptor.hpp"
 #include "multi_agent_mapping/msg/neighbor_estimate.hpp"
 // pcl
 #include <pcl/registration/icp.h>
@@ -43,12 +47,43 @@ enum class LiDARType {
 enum class DescriptorType {
     LidarIris
 };
+enum class OptimizerState { 
+    Idle, 
+    Start, 
+    Initialization, 
+    RotationEstimation, 
+	PoseEstimationInitialization, 
+    PoseEstimation, 
+    End, 
+    PostEndingCommunicationDelay 
+};
 
 struct singleRobot {
 	/*** robot information ***/
 	int robot_id; // robot id
 	std::string robot_name; // robot name, for example, 'scout_1_1, scout_2_2,...'
 	std::string odom_frame_; // odom frame
+
+    /*** ROS2 subscribers and publishers ***/
+    // Mapping
+    rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr sub_optimization_state;
+    rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr sub_pose_estimate_state;
+    rclcpp::Subscription<std_msgs::msg::Int8>::SharedPtr sub_rotation_estimate_state;
+    rclcpp::Subscription<multi_agent_mapping::msg::NeighborEstimate>::SharedPtr sub_neighbor_rotation_estimates;
+    rclcpp::Subscription<multi_agent_mapping::msg::NeighborEstimate>::SharedPtr sub_neighbor_pose_estimates;
+    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr pub_optimization_state;
+    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr pub_pose_estimate_state;
+    rclcpp::Publisher<std_msgs::msg::Int8>::SharedPtr pub_rotation_estimate_state;
+    rclcpp::Publisher<multi_agent_mapping::msg::NeighborEstimate>::SharedPtr pub_neighbor_rotation_estimates;
+    rclcpp::Publisher<multi_agent_mapping::msg::NeighborEstimate>::SharedPtr pub_neighbor_pose_estimates;
+
+    // Loop closure
+    rclcpp::Subscription<multi_agent_mapping::msg::LoopInfo>::SharedPtr sub_loop_info;
+    rclcpp::Publisher<multi_agent_mapping::msg::LoopInfo>::SharedPtr pub_loop_info;
+
+    // Descriptors
+    rclcpp::Subscription<multi_agent_mapping::msg::GlobalDescriptor>::SharedPtr sub_descriptors;
+    rclcpp::Publisher<multi_agent_mapping::msg::GlobalDescriptor>::SharedPtr pub_descriptors;
 
 	/*** other ***/
     rclcpp::Time time_cloud_input_stamp; // recent keyframe timestamp
