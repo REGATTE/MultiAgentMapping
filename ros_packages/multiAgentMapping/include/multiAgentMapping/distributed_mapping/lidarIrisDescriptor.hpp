@@ -1,7 +1,7 @@
 #ifndef _LIDAR_IRIS_DESCRIPTOR_H_
 #define _LIDAR_IRIS_DESCRIPTOR_H_
 
-#include "multiAgentMapping/distributed_mapping/descriptorBasis.h"
+#include "multiAgentMapping/distributed_mapping/descriptorBasis.hpp"
 
 class lidar_iris_descriptor : public scan_descriptor {
     public:
