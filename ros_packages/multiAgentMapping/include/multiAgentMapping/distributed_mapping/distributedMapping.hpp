@@ -11,6 +11,7 @@
 #include <tf2_ros/transform_listener.h>  // For listening to transforms
 #include <tf2_ros/transform_broadcaster.h>  // For broadcasting transforms
 #include <geometry_msgs/msg/transform_stamped.hpp>  // For publishing transformations
+#include <geometry_msgs/msg/pose_with_covariance.hpp>
 
 // include headers
 #include "multiAgentMapping/distributed_mapping/paramsServer.hpp"
@@ -29,8 +30,8 @@
 #include <pcl/registration/correspondence_estimation.h>
 #include <pcl/registration/correspondence_rejection_sample_consensus.h>
 // distributed mapper colcon
-#include "distributed_mapper.hpp"
-#include "distributed_mapper_utils.hpp"
+#include "distributed_mapper/distributed_mapper.hpp"
+#include "distributed_mapper/distributed_mapper_utils.hpp"
 
 #include <gtsam/nonlinear/ISAM2.h>
 #include <flann/flann.hpp>
@@ -43,7 +44,7 @@
 using namespace std;
 using namespace gtsam;
 
-class distributedMapping : publi paramsServer {
+class distributedMapping : public paramsServer {
     public:
         distributedMapping();
         ~distributedMapping();
@@ -59,7 +60,7 @@ class distributedMapping : publi paramsServer {
             const rclcpp::Time& timestamp
         );
         bool saveFrame(
-            const Pose3& pose_to;
+            const Pose3& pose_to
         );
         void updateLocalPath(
             const PointPose6D& pose
@@ -75,7 +76,7 @@ class distributedMapping : publi paramsServer {
     private:
         void poseCovariance2msg(
             const graph_utils::PoseWithCovariance& pose,
-            geometry_msgs::msg::PoseWithCovariancec& msg
+            geometry_msgs::msg::PoseWithCovariance& msg
         );
         void msg2poseCovariance(
             const geometry_msgs::msg::PoseWithCovariance& msg,
@@ -107,8 +108,8 @@ class distributedMapping : publi paramsServer {
         );
         void neighborPoseHandler(
 			const multi_agent_mapping::msg::NeighborEstimate& msg,
-			int& id);
-
+			int& id
+		);
 		void updatePoseEstimateFromNeighbor(
 			const int& rid,
 			const Key& key,
@@ -126,13 +127,6 @@ class distributedMapping : publi paramsServer {
         void removeInactiveNeighbors();
         void faileSafeCheck();
         void initializePoseEstimation();
-        bool rotationEstimationStoppingBarrier();
-		void abortOptimization(
-			const bool& log_info
-        );
-		void removeInactiveNeighbors();
-		void failSafeCheck();
-		void initializePoseEstimation();
 		bool poseEstimationStoppingBarrier();
 		void updateGlobalPath(
 			const Pose3& pose_in
@@ -143,8 +137,8 @@ class distributedMapping : publi paramsServer {
 			const OptimizerState& state
         );
 		void run(
-            const ros::TimerEvent&
-        );
+			const rclcpp::TimerBase::SharedPtr& timer_event
+		);
 		void performRSIntraLoopClosure();
 		int detectLoopClosureDistance(
 			const int& cur_ptr
@@ -184,7 +178,7 @@ class distributedMapping : publi paramsServer {
 
         // message information
         pcl::PointCloud<PointPose3D>::Ptr cloud_for_decript_ds; // input cloud for descriptor
-		deque<pair<int, dcl_slam::global_descriptor>> store_descriptors;
+		deque<pair<int, multi_agent_mapping::msg::GlobalDescriptor>> store_descriptors;
 
         std_msgs::msg::Int8 state_msg; // optimization state handler
 
@@ -209,7 +203,7 @@ class distributedMapping : publi paramsServer {
 
 		unique_ptr<scan_descriptor> keyframe_descriptor; // descriptor for keyframe pointcloud
 
-		deque<mutli_agent_mapping::msg::LoopInfo> loop_closures_candidates; // loop closures need to verify
+		deque<multi_agent_mapping::msg::LoopInfo> loop_closures_candidates; // loop closures need to verify
 
 		// radius search for intra-robot loop closure
 		pcl::PointCloud<PointPose3D>::Ptr copy_keyposes_cloud_3d; // copy of local 3-dof keyposes
@@ -237,7 +231,7 @@ class distributedMapping : publi paramsServer {
 		pcl::PointCloud<PointPose6D>::Ptr keyposes_cloud_6d; // 6-dof keyposes in local frame
 
 		/*** distributed pose graph optmazition ***/
-		rclcpp::TimerBase::Sharedptr distributed_mapping_thread; // thread for running distributed mapping
+		rclcpp::TimerBase::SharedPtr distributed_mapping_thread; // thread for running distributed mapping
 		boost::shared_ptr<distributed_mapper::DistributedMapper> optimizer; // distributed mapper (DGS)
 
 		int steps_of_unchange_graph; // stop optimization 

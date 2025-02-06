@@ -122,7 +122,7 @@ class paramsServer : public rclcpp::Node {
         int number_of_robots_; // number of robots in the sim
 
         // robot info
-        std::string robot_name;
+        std::string robot_name; // this robot name
         int robot_id;
 
         // robot frame name
