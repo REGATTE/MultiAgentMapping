@@ -128,18 +128,18 @@ cv::Mat lidar_iris_descriptor::circularShift(
 }
 
 std::vector<cv::Mat2f> lidar_iris_descriptor::logGaborFilter(
-    const cv::Mat2f &src,
+    const cv::Mat1f &src,
     unsigned int nscale,
     int min_wave_length,
     double mult,
-    double_sigma_on_f
+    double sigma_on_f
 ){
     // get dim for input matrix
     int rows = src.rows;
     int cols = src.cols;
 
     // initialize the filter sum matrix (used later for frequency shifts)
-    cv__Mat2f filtersum = cv::Mat2f::zeros(1, cols);
+    cv::Mat2f filtersum = cv::Mat2f::zeros(1, cols);
     std::vector<cv::Mat2f> EO(nscale); // vector to store the filtered output at each scale
 	int ndata = cols; // number of data points -> ensure its even
 	if(ndata % 2 == 1) // if odd, reduce by 1
@@ -208,7 +208,7 @@ std::vector<cv::Mat2f> lidar_iris_descriptor::logGaborFilter(
 		wavelength *= mult;
 	}
     // Circularly shift the filter sum to center the frequency response
-	filtersum = circShift(filtersum, 0, cols / 2);
+	filtersum = circularShift(filtersum, 0, cols / 2);
     // Return the filtered responses at all scales
 	return EO;
 }
@@ -326,7 +326,7 @@ void lidar_iris_descriptor::recomb(
 void lidar_iris_descriptor::forwardFFT(
     cv::Mat &src,          // Input 2D image (grayscale or single-channel)
     cv::Mat *f_img,        // Output array to store real and imaginary parts of the FFT
-    bool do_recomb          // Whether to recombine (shift) the frequency components to the center
+    bool do_recomb = true  // Whether to recombine (shift) the frequency components to the center
 )
 {
     // Step 1: Get optimal DFT sizes for more efficient computation
@@ -434,6 +434,7 @@ float lidar_iris_descriptor::logpolar(
     // Step 5: Determine the angular step size (d_theta) for each angle
     float d_theta = CV_PI / (float)angles;  // Half-circle (π) divided by the number of angles
     float theta = CV_PI / 2.0;  // Start at π/2 (90 degrees) for proper orientation
+    float radius = 0;
 
     // Step 6: Initialize mapping matrices to store the (x, y) coordinates corresponding to each (radius, angle)
     cv::Mat map_x(src.size(), CV_32FC1);
@@ -564,47 +565,6 @@ cv::RotatedRect lidar_iris_descriptor::fftMatch(
 }
 
 void lidar_iris_descriptor::getHammingDistance(
-	const cv::Mat1b &T1,
-	const cv::Mat1b &M1,
-	const cv::Mat1b &T2,
-	const cv::Mat1b &M2,
-	int scale,
-	float &dis,
-	int &bias)
-{
-	dis = NAN;
-	bias = -1;
-	// #pragma omp parallel for num_threads(8)
-	for(int shift = scale - 2; shift <= scale + 2; shift++)
-	{
-		cv::Mat1b T1s = circShift(T1, 0, shift);
-		cv::Mat1b M1s = circShift(M1, 0, shift);
-		cv::Mat1b mask = M1s | M2;
-		cv::Mat1b mask_tmp = mask / 255;
-		int MaskBitsNum = cv::sum(mask_tmp)[0];
-		int totalBits = T1s.rows * T1s.cols - MaskBitsNum;
-		cv::Mat1b C = T1s ^ T2;
-		C = C & ~mask;
-		cv::Mat1b c_tmp = C / 255;
-		int bitsDiff = cv::sum(c_tmp)[0];
-		if(totalBits == 0)
-		{
-			dis = NAN;
-		}
-		else
-		{
-			float currentDis = bitsDiff / (float)totalBits;
-			if(currentDis < dis || isnan(dis))
-			{
-				dis = currentDis;
-				bias = shift;
-			}
-		}
-	}
-	return;
-}
-
-void lidar_iris_descriptor::getHammingDistance(
     const cv::Mat1b &T1,  // Binary phase descriptor of the first feature
     const cv::Mat1b &M1,  // Binary mask of the first feature (low-magnitude bits)
     const cv::Mat1b &T2,  // Binary phase descriptor of the second feature
@@ -622,8 +582,8 @@ void lidar_iris_descriptor::getHammingDistance(
     for (int shift = scale - 2; shift <= scale + 2; shift++)
     {
         // Step 3: Apply circular row shift to T1 and M1 by `shift` columns
-        cv::Mat1b T1s = circShift(T1, 0, shift);  // Circular shift for the phase descriptor
-        cv::Mat1b M1s = circShift(M1, 0, shift);  // Circular shift for the mask
+        cv::Mat1b T1s = circularShift(T1, 0, shift);  // Circular shift for the phase descriptor
+        cv::Mat1b M1s = circularShift(M1, 0, shift);  // Circular shift for the mask
 
         // Step 4: Compute the combined mask where bits are considered invalid
         cv::Mat1b mask = M1s | M2;  // Combine the masks using bitwise OR to identify invalid bits
@@ -691,9 +651,9 @@ float lidar_iris_descriptor::compare(
             else
             {
                 // Step 1b: Perform FFT-based template matching for the 180-degree-shifted orientation
-                auto T2x = circShift(img2.T, 0, 180);
-                auto M2x = circShift(img2.M, 0, 180);
-                auto img2x = circShift(img2.img, 0, 180);
+                auto T2x = circularShift(img2.T, 0, 180);
+                auto M2x = circularShift(img2.M, 0, 180);
+                auto img2x = circularShift(img2.img, 0, 180);
 
                 auto secondRect = fftMatch(img2x, img1.img);
                 int secondShift = secondRect.center.x - img1.img.cols / 2;
@@ -722,9 +682,9 @@ float lidar_iris_descriptor::compare(
     if (match_mode_ == 1)
     {
         // Step 1: Shift the second feature by 180 degrees
-        auto T2x = circShift(img2.T, 0, 180);
-        auto M2x = circShift(img2.M, 0, 180);
-        auto img2x = circShift(img2.img, 0, 180);
+        auto T2x = circularShift(img2.T, 0, 180);
+        auto M2x = circularShift(img2.M, 0, 180);
+        auto img2x = circularShift(img2.img, 0, 180);
 
         // Step 2: Perform FFT-based template matching for the shifted orientation
         auto secondRect = fftMatch(img2x, img1.img);
@@ -758,6 +718,9 @@ float lidar_iris_descriptor::compare(
             *bias = bias1;
         return dis1;
     }
+
+    // default return in case of invalid match_mode_
+    return -1.0f;
 }
 
 

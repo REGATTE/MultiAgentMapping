@@ -1,27 +1,9 @@
 #ifndef _LIDAR_IRIS_DESCRIPTOR_H_
 #define _LIDAR_IRIS_DESCRIPTOR_H_
 
-// descriptor
-#include <nabo/nabo.h>
-#include <rclcpp/rclcpp.hpp>
-#include <vector>
-#include <unordered_map>
-#include <opencv2/opencv.hpp>
+#include "multiAgentMapping/distributed_mapping/descriptorBasis.h"
 
-#include <pcl/features/normal_3d.h>
-#include <pcl/features/fpfh.h>
-#include <pcl/features/grsd.h>
-#include <pcl/common/pca.h>
-#include <fenv.h>
-
-// file iostream
-#include <fstream>
-#include <iostream>
-#include <string>
-
-using namespace std;
-
-class lidar_iris_descriptor {
+class lidar_iris_descriptor : public scan_descriptor {
     public:
         struct featureDesc {
             cv::Mat1b img;
