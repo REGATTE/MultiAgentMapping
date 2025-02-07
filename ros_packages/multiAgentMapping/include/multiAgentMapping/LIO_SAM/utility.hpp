@@ -352,7 +352,7 @@ public:
 };
 
 
-sensor_msgs::msg::PointCloud2 publishCloud(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr thisPub, pcl::PointCloud<PointType>::Ptr thisCloud, rclcpp::Time thisStamp, std::string thisFrame)
+inline sensor_msgs::msg::PointCloud2 publishCloud(rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr thisPub, pcl::PointCloud<PointType>::Ptr thisCloud, rclcpp::Time thisStamp, std::string thisFrame)
 {
     sensor_msgs::msg::PointCloud2 tempCloud;
     pcl::toROSMsg(*thisCloud, tempCloud);
@@ -402,18 +402,18 @@ void imuRPY2rosRPY(sensor_msgs::msg::Imu *thisImuMsg, T *rosRoll, T *rosPitch, T
 }
 
 
-float pointDistance(PointType p)
+inline float pointDistance(PointType p)
 {
     return sqrt(p.x*p.x + p.y*p.y + p.z*p.z);
 }
 
 
-float pointDistance(PointType p1, PointType p2)
+inline float pointDistance(PointType p1, PointType p2)
 {
     return sqrt((p1.x-p2.x)*(p1.x-p2.x) + (p1.y-p2.y)*(p1.y-p2.y) + (p1.z-p2.z)*(p1.z-p2.z));
 }
 
-rmw_qos_profile_t qos_profile{
+inline rmw_qos_profile_t qos_profile{
     RMW_QOS_POLICY_HISTORY_KEEP_LAST,
     1,
     RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
@@ -425,14 +425,14 @@ rmw_qos_profile_t qos_profile{
     false
 };
 
-auto qos = rclcpp::QoS(
+inline auto qos = rclcpp::QoS(
     rclcpp::QoSInitialization(
         qos_profile.history,
         qos_profile.depth
     ),
     qos_profile);
 
-rmw_qos_profile_t qos_profile_imu{
+inline rmw_qos_profile_t qos_profile_imu{
     RMW_QOS_POLICY_HISTORY_KEEP_LAST,
     2000,
     RMW_QOS_POLICY_RELIABILITY_BEST_EFFORT,
@@ -444,14 +444,14 @@ rmw_qos_profile_t qos_profile_imu{
     false
 };
 
-auto qos_imu = rclcpp::QoS(
+inline auto qos_imu = rclcpp::QoS(
     rclcpp::QoSInitialization(
         qos_profile_imu.history,
         qos_profile_imu.depth
     ),
     qos_profile_imu);
 
-rmw_qos_profile_t qos_profile_lidar{
+inline rmw_qos_profile_t qos_profile_lidar{
     RMW_QOS_POLICY_HISTORY_KEEP_LAST,
     5,
     RMW_QOS_POLICY_RELIABILITY_RELIABLE,
@@ -463,7 +463,7 @@ rmw_qos_profile_t qos_profile_lidar{
     false
 };
 
-auto qos_lidar = rclcpp::QoS(
+inline auto qos_lidar = rclcpp::QoS(
     rclcpp::QoSInitialization(
         qos_profile_lidar.history,
         qos_profile_lidar.depth
