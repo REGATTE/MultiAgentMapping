@@ -188,7 +188,7 @@ distributedMapping::distributedMapping() : paramsServer()
     // adding an if-statement for further dev of other descriptors
     if(descriptor_type_num_ == DescriptorType::LidarIris){
         keyframe_descriptor = unique_ptr<scan_descriptor>(new lidar_iris_descriptor(
-            80, 360, 128, 0.4, 30, 2, 10, 4, 18, 1.6, 0.75, number_of_robots_, robot_id
+            80, 360, 128, 0.4, 30, 2, 10, 4, 18, 1.6, 0.75, number_of_robots_, robot_id_
         ));
         // rows, columns, n_scan, distance_threshold, exclude_Recent_frame_num, match_mode, 
         // knn_candidate_num, nscale, min_wave_length, mult, sigma_on_f, number_of_robots, robot_f
@@ -215,5 +215,142 @@ distributedMapping::distributedMapping() : paramsServer()
     keyposes_cloud_3d.reset(new pcl::PointCloud<PointPose3D>());
 	keyposes_cloud_6d.reset(new pcl::PointCloud<PointPose6D>());
 
+    optimizer = std::shared_ptr<distributed_mapper::DistributedMapper>(
+        new distributed_mapper::DistributedMapper(robot_name_)
+    );
 
+    steps_of_unchange_graph = 1;
+
+    local_pose_graph = std::make_shared<NonlinearFactorGraph>();
+    initial_values = std::make_shared<Values>();
+	graph_values_vec = make_pair(local_pose_graph, initial_values);
+
+    graph_disconnected = true;
+
+	lowest_id_included = robot_id_;
+	lowest_id_to_included = lowest_id_included;
+	prior_owner = id_;
+	prior_added = false;
+
+    adjacency_matrix = gtsam::zeros(number_of_robots_, number_of_robots_);
+	optimization_order.clear();
+	in_order = false;
+
+    optimizer_state = OptimizerState::Idle;
+	optimization_steps = 0;
+	sent_start_optimization_flag = false;
+
+	current_rotation_estimate_iteration = 0;
+	current_pose_estimate_iteration = 0;
+
+	latest_change = -1;
+	steps_without_change = 0;
+
+	rotation_estimate_start = false;
+	pose_estimate_start = false;
+	rotation_estimate_finished = false;
+	pose_estimate_finished = false;
+	estimation_done = false;
+
+	neighboring_robots.clear();
+	neighbors_within_communication_range.clear();
+	neighbors_started_optimization.clear();
+	neighbor_state.clear();
+
+	neighbors_rotation_estimate_finished.clear();
+	neighbors_pose_estimate_finished.clear();
+	neighbors_estimation_done.clear();
+
+	neighbors_lowest_id_included.clear();
+	neighbors_anchor_offset.clear();
+
+    local_pose_graph_no_filtering = std::make_shared<NonlinearFactorGraph>();  
+
+    pose_estimates_from_neighbors.clear();
+	other_robot_keys_for_optimization.clear();
+
+	accepted_keys.clear();
+	rejected_keys.clear();
+	measurements_rejected_num = 0;
+	measurements_accepted_num = 0;
+	
+	optimizer->setUseBetweenNoiseFlag(use_between_noise_); // use between noise or not in optimizePoses
+	optimizer->setUseLandmarksFlag(use_landmarks_); // use landmarks
+	optimizer->loadSubgraphAndCreateSubgraphEdge(graph_values_vec); // load subgraphs
+	optimizer->setVerbosity(distributed_mapper::DistributedMapper::ERROR); // verbosity level
+	optimizer->setFlaggedInit(use_flagged_init_);
+	optimizer->setUpdateType(distributed_mapper::DistributedMapper::incUpdate);
+	optimizer->setGamma(gamma_);
+
+	if(global_optmization_enable_)
+	{
+		distributed_mapping_thread = nh.createTimer(
+			ros::Duration(mapping_process_interval_), &distributedMapping::run, this);
+	}
+
+	LOG(INFO) << "distributed mapping class initialization finish" << endl;
+}
+
+
+pcl::PointCloud<PointPose3D>::Ptr distributedMapping::getLocalKeyposesCloud3D()
+{
+	return keyposes_cloud_3d;
+}
+
+pcl::PointCloud<PointPose6D>::Ptr distributedMapping::getLocalKeyposesCloud6D()
+{
+	return keyposes_cloud_6d;
+}
+
+pcl::PointCloud<PointPose3D> distributedMapping::getLocalKeyframe(const int& index)
+{
+	return robots[robot_id].keyframe_cloud_array[index];
+}
+
+Pose3 distributedMapping::getLatestEstimate()
+{
+	return isam2_keypose_estimate;
+}
+
+void distributedMapping::poseCovariance2msg(
+	const graph_utils::PoseWithCovariance& pose,
+	geometry_msgs::PoseWithCovariance& msg)
+{
+	msg.pose.position.x = pose.pose.x();
+	msg.pose.position.y = pose.pose.y();
+	msg.pose.position.z = pose.pose.z();
+
+	Vector quaternion = pose.pose.rotation().quaternion();
+	msg.pose.orientation.w = quaternion(0);
+	msg.pose.orientation.x = quaternion(1);
+	msg.pose.orientation.y = quaternion(2);
+	msg.pose.orientation.z = quaternion(3);
+
+	for(int i = 0; i < 6; i++)
+	{
+		for(int j = 0; j < 6; j++)
+		{
+			msg.covariance[i*6 + j] = pose.covariance_matrix(i, j);
+		}
+	}
+}
+
+void distributedMapping::msg2poseCovariance(
+	const geometry_msgs::PoseWithCovariance& msg,
+	graph_utils::PoseWithCovariance& pose)
+{
+	Rot3 rotation(msg.pose.orientation.w, msg.pose.orientation.x,
+		msg.pose.orientation.y, msg.pose.orientation.z);
+	Point3 translation(msg.pose.position.x, msg.pose.position.y, msg.pose.position.z);
+	
+	pose.pose = Pose3(rotation, translation);
+
+	pose.covariance_matrix = gtsam::zeros(6,6);
+	for(int i = 0; i < 6; i++)
+	{
+		for(int j = 0; j < 6; j++)
+		{
+			pose.covariance_matrix(i, j) = msg.covariance[i*6 + j];
+		}
+	}
 }

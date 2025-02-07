@@ -33,6 +33,7 @@
 #include "distributed_mapper/distributed_mapper.hpp"
 #include "distributed_mapper/distributed_mapper_utils.hpp"
 
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/ISAM2.h>
 #include <flann/flann.hpp>
 #include <thread>
