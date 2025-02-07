@@ -37,6 +37,7 @@
 #include <flann/flann.hpp>
 #include <thread>
 #include <deque>
+#include <map>
 
 #include <fstream>
 #include <iostream>
