@@ -53,8 +53,8 @@ paramsServer::paramsServer() : Node("params_server_node"){
     this->get_parameter(robot_namespace + "/map_publish_interval", map_publish_interval_);
     this->get_parameter(robot_namespace + "/mapping_process_interval", mapping_process_interval_);
 
-    this->declare_parameter<bool>(robot_namespace + "/global_optmization_enable", false);
-    this->get_parameter(robot_namespace + "/global_optmization_enable", global_optmization_enable_);
+    this->declare_parameter<bool>(robot_namespace + "/global_optimization_enable", false);
+    this->get_parameter(robot_namespace + "/global_optimization_enable", global_optimization_enable_);
 
     this->declare_parameter<bool>(robot_namespace + "/use_pcm", false);
     this->get_parameter(robot_namespace + "/use_pcm", use_pcm_);
@@ -108,6 +108,7 @@ paramsServer::paramsServer() : Node("params_server_node"){
     this->declare_parameter<int>(robot_namespace + "/knn_candidates", 10);
     this->declare_parameter<int>(robot_namespace + "/exclude_recent_frame_num", 30);
     this->declare_parameter<float>(robot_namespace + "/search_radius", 15.0);
+    // match mode 2 -> iris feature matching
     this->declare_parameter<int>(robot_namespace + "/match_mode", 2);
     this->declare_parameter<int>(robot_namespace + "/iris_row", 80);
     this->declare_parameter<int>(robot_namespace + "/iris_column", 360);

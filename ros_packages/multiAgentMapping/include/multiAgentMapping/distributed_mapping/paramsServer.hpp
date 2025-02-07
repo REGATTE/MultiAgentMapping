@@ -139,7 +139,7 @@ class paramsServer : public rclcpp::Node {
 		float mapping_process_interval_; // interval of optmization (in second)
     
         // Mapping
-		bool global_optmization_enable_; // enable distributed DGS
+		bool global_optimization_enable_; // enable distributed DGS
 		bool use_pcm_; // enable pairwise consistency maximization (PCM)
 		float pcm_threshold_; // confidence probability for PCM (i.e., 0.01, 0.05, 0.1, 0.25, 0.5, 0.75)
 		int optmization_maximum_iteration_; // maximum iterations time of optimization

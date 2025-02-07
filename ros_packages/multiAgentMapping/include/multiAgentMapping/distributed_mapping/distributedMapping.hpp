@@ -87,7 +87,7 @@ class distributedMapping : public paramsServer {
             const multi_agent_mapping::msg::GlobalDescriptor& msg,
             int& robot_id
         );
-        void loopInfoHnadler(
+        void loopInfoHandler(
             const multi_agent_mapping::msg::LoopInfo& msg,
             int& robot_id
         );
@@ -103,7 +103,7 @@ class distributedMapping : public paramsServer {
             const std_msgs::msg::Int8& msg,
             int& robot_id
         );
-        void neighbotRotationHandler(
+        void neighborRotationHandler(
             const multi_agent_mapping::msg::NeighborEstimate& msg,
             int& robot_id
         );
