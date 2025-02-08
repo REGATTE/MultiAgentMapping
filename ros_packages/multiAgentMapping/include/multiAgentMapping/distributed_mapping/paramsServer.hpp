@@ -136,13 +136,13 @@ class paramsServer : public rclcpp::Node {
         int onboard_cpu_cores_num_; // cores number of onboard unit
 		float loop_closure_process_interval_; // interval of detecting loop (in second)
 		float map_publish_interval_; // interval of publish global maps (in second)
-		float mapping_process_interval_; // interval of optmization (in second)
+		float mapping_process_interval_; // interval of optimization (in second)
     
         // Mapping
-		bool global_optmization_enable_; // enable distributed DGS
+		bool global_optimization_enable_; // enable distributed DGS
 		bool use_pcm_; // enable pairwise consistency maximization (PCM)
 		float pcm_threshold_; // confidence probability for PCM (i.e., 0.01, 0.05, 0.1, 0.25, 0.5, 0.75)
-		int optmization_maximum_iteration_; // maximum iterations time of optimization
+		int optimization_maximum_iteration_; // maximum iterations time of optimization
 		bool use_between_noise_; // use between noise flag
 		int fail_safe_steps_; // steps of fail safe to abort (depend on both fail_safe_wait_time_ and mapping_process_interval_)
 		float fail_safe_wait_time_; // wait time for fail safe (in second)

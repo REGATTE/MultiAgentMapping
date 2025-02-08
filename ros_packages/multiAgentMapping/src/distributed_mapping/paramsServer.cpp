@@ -53,8 +53,8 @@ paramsServer::paramsServer() : Node("params_server_node"){
     this->get_parameter(robot_namespace + "/map_publish_interval", map_publish_interval_);
     this->get_parameter(robot_namespace + "/mapping_process_interval", mapping_process_interval_);
 
-    this->declare_parameter<bool>(robot_namespace + "/global_optmization_enable", false);
-    this->get_parameter(robot_namespace + "/global_optmization_enable", global_optmization_enable_);
+    this->declare_parameter<bool>(robot_namespace + "/global_optimization_enable", false);
+    this->get_parameter(robot_namespace + "/global_optimization_enable", global_optimization_enable_);
 
     this->declare_parameter<bool>(robot_namespace + "/use_pcm", false);
     this->get_parameter(robot_namespace + "/use_pcm", use_pcm_);
@@ -65,8 +65,8 @@ paramsServer::paramsServer() : Node("params_server_node"){
     this->declare_parameter<bool>(robot_namespace + "/use_between_noise", false);
     this->get_parameter(robot_namespace + "/use_between_noise", use_between_noise_);
 
-    this->declare_parameter<int>(robot_namespace + "/optmization_maximum_iteration", 100);
-    this->get_parameter(robot_namespace + "/optmization_maximum_iteration", optmization_maximum_iteration_);
+    this->declare_parameter<int>(robot_namespace + "/optimization_maximum_iteration", 100);
+    this->get_parameter(robot_namespace + "/optimization_maximum_iteration", optimization_maximum_iteration_);
 
     this->declare_parameter<float>(robot_namespace + "/failsafe_wait_time", 1.0);
     this->get_parameter(robot_namespace + "/failsafe_wait_time", fail_safe_wait_time_);
