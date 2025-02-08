@@ -246,7 +246,7 @@ void distributedMapping::neighborPoseHandler(
 	RCLCPP_INFO(
 		this->get_logger(), 
 		"neighborPoseHandler<%d> from robot %d, done? %d [%lu/%lu]", 
-		id_, id, msg->estimation_done, 
+		robot_id, id, msg->estimation_done, 
 		optimizer->getNeighboringRobotsInit().size(), 
 		optimization_order.size() - 1
 	);
@@ -261,7 +261,7 @@ void distributedMapping::neighborPoseHandler(
 				optimizer->updateInitialized(true);
 				current_pose_estimate_iteration++;
 			} catch(const std::exception& ex){
-				RCLCPP_ERROR("Stopping pose estimation %d: %s.", robot_id, ex.what());
+				RCLCPP_ERROR(this->get_logger(), "Stopping pose estimation %d: %s.", robot_id, ex.what());
 				abortOptimization(true);
 			}
 
@@ -273,7 +273,7 @@ void distributedMapping::neighborPoseHandler(
 			RCLCPP_INFO(
 				this->get_logger(), 
 				"--->Pose estimation<%d> iter: [%d/%d] change: %.4f.", 
-				id_, 
+				robot_id, 
 				current_pose_estimate_iteration, 
 				optimization_maximum_iteration_, 
 				optimizer->latestChange()
@@ -330,12 +330,12 @@ void distributedMapping::neighborPoseHandler(
 				{
 					for(int i = 0; i < 3; i++)
 					{
-						robots[other_robot].estimate_msg.anchor_offset.push_back(anchor_offset.vector()[i]);
+						robots[other_robot].estimate_msg.anchor_offset.push_back(anchor_offset(i));
 					}
 					robots[other_robot].estimate_msg.initialized = optimizer->isRobotInitialized();
 					robots[other_robot].estimate_msg.receiver_id = other_robot;
 					robots[other_robot].estimate_msg.estimation_done = estimation_done;
-					robots[id_].pub_neighbor_pose_estimates.publish(robots[other_robot].estimate_msg);
+					robots[robot_id].pub_neighbor_pose_estimates->publish(robots[other_robot].estimate_msg);
 				}
 			}
 			// send pose optimization state
@@ -344,7 +344,291 @@ void distributedMapping::neighborPoseHandler(
 		}
 		// send optimization state
 		state_msg.data = estimation_done? 1:0;
-		robots[robot_id].pub_pose_Estiamte_state->publish(state_msg);
+		robots[robot_id].pub_pose_estimate_state->publish(state_msg);
 	}
 }
 
+/**
+ * @brief Function to save current frame if its difference is more than the threshold
+ * @param surroundingkeyframeAddingDistThreshold = 0.2radian
+ * @param surroundingkeyframeAddingAngleThreshold = 1.0m
+ */
+bool distributedMapping::saveFrame(
+	const Pose3& pose_to
+){
+	if(keyposes_cloud_3d->empty()){
+		return true;
+	}
+
+	auto last_keypose = pclPointTogtsamPose3(keyposes_cloud_6d->back());
+	auto pose_increment = last_keypose.inverse() * pose_to;
+
+	float x = pose_increment.translation().x();
+	float y = pose_increment.translation().y();
+	float z = pose_increment.translation().z();
+	float roll = pose_increment.rotation().roll();
+	float pitch = pose_increment.rotation().pitch();
+	float yaw = pose_increment.rotation().yaw();
+
+	// select keyframe
+	if(abs(roll) < surroundingkeyframeAddingDistThreshold && abs(pitch) < surroundingkeyframeAddingDistThreshold && abs(yaw) < surroundingkeyframeAddingDistThreshold && 
+			sqrt(x*x + y*y + z*z) < surroundingkeyframeAddingAngleThreshold){
+				return false;
+			}
+	
+	return true;
+}
+
+void distributedMapping::processKeyframesAndPose(
+	const Pose3& pose_to,
+	const pcl::PointCloud<PointPose3D>::Ptr frame_to,
+	const rclcpp::Time& timestamp
+){
+	// save keyframe cloud
+	pcl::copyPointCloud(*frame_to, *robots[robot_id].keyframe_cloud);
+	robots[robot_id].keyframe_cloud_array.push_back(*robots[robot_id].keyframe_cloud);
+	// save timestamp
+	robots[robot_id].time_cloud_input_stamp = timestamp;
+	robots[robot_id].time_cloud_input = timestamp.seconds();
+
+	// add prio factor if no prior poses
+	Pose3 new_pose_to;
+	int poses_number = initial_values->size();
+	Symbol current_symbol = Symbol('a' + robot_id, poses_number);
+	if(poses_number == 0){
+		RCLCPP_INFO(this->get_logger(), "Adding prior factor!!");
+		// save prior pose value
+		robots[robot_id].prior_odom = pose_to;
+		// add prior factor to graph
+		auto prior_factor = PriorFactor<Pose3>(current_symbol, pose_to, prior_noise);
+		local_pose_graph_no_filtering->add(prior_factor);
+		isam2_graph.add(prior_factor);
+
+		// add prior values
+		initial_values->insert(current_symbol, pose_to);
+		isam2_initial_values.insert(current_symbol, pose_to);
+		new_pose_to = pose_to;
+
+		RCLCPP_INFO(
+			this->get_logger(), 
+			"createPrior: [%d] Translation: x = %.3f, y = %.3f, z = %.3f, Rotation: roll = %.3f, pitch = %.3f, yaw = %.3f.", 
+			robot_id, 
+			new_pose_to.translation().x(), 
+			new_pose_to.translation().y(), 
+			new_pose_to.translation().z(), 
+			new_pose_to.rotation().roll(), 
+			new_pose_to.rotation().pitch(), 
+			new_pose_to.rotation().yaw()
+		);
+	} else {
+		// add odometry factor if poses not empty
+		RCLCPP_INFO(this->get_logger(), "Adding odom factor!!");
+
+		// incremental odom data in local frame
+		auto pose_from = pclPointTogtsamPose3(keyposes_cloud_6d->points[poses_number - 1]);
+		auto pose_increment = pose_from.between(pose_to);
+		Symbol previous_symbol = Symbol('a' + robot_id, poses_number - 1);
+		Matrix covariance = odometry_noise->covariance();
+
+		// add odometry factor to graph
+		NonlinearFactor::shared_ptr factor(new BetweenFactor<Pose3>(
+			previous_symbol, current_symbol, pose_increment, odometry_noise
+		));
+		local_pose_graph->add(factor);
+		local_pose_graph_no_filtering->add(factor);
+		isam2_graph.add(factor);
+
+		// add odometry value
+		isam2_initial_values.insert(current_symbol, pose_to);
+		// incremental odom in global grpah frame
+		pose_from = initial_values->at<Pose3>(previous_symbol);
+		new_pose_to = pose_from*pose_increment;
+		initial_values->insert(current_symbol, new_pose_to);
+
+		// save factor in local map (for PCM)
+		auto new_factor = boost::dynamic_pointer_cast<BetweenFactor<Pose3>>(factor);
+		robot_local_map.addTransform(*new_factor, covariance);
+
+		RCLCPP_INFO(
+			this->get_logger(), 
+			"createOdom: [%d] [%d-%d] -- [From: x = %.3f, y = %.3f, z = %.3f, roll = %.3f, pitch = %.3f, yaw = %.3f], "
+			"[To: x = %.3f, y = %.3f, z = %.3f, roll = %.3f, pitch = %.3f, yaw = %.3f].", 
+			robot_id, 
+			poses_number - 1, 
+			poses_number, 
+			pose_from.translation().x(), 
+			pose_from.translation().y(), 
+			pose_from.translation().z(), 
+			pose_from.rotation().roll(), 
+			pose_from.rotation().pitch(), 
+			pose_from.rotation().yaw(), 
+			new_pose_to.translation().x(), 
+			new_pose_to.translation().y(), 
+			new_pose_to.translation().z(), 
+			new_pose_to.rotation().roll(), 
+			new_pose_to.rotation().pitch(), 
+			new_pose_to.rotation().yaw()
+		);
+	}
+
+	//optimizing
+	isam2_graph.print("GTSAM Graph:\n");
+	isam2_graph.resize(0);
+	isam2_initial_values.clear();
+	isam2_current_estimates = isam2->calculateEstimate();
+	isam2_keypose_estimate = isam2_current_estimates.at<Pose3>(current_symbol);
+
+	// save pose in local frame
+	static PointPose3D pose_3d;
+	pose_3d.x = isam2_keypose_estimate.translation().x();
+	pose_3d.y = isam2_keypose_estimate.translation().y();
+	pose_3d.z = isam2_keypose_estimate.translation().z();
+	pose_3d.intensity = poses_number; // keyframe index
+	keyposes_cloud_3d->push_back(pose_3d);
+
+	static PointPose6D pose_6d;
+	pose_6d.x = pose_3d.x;
+	pose_6d.y = pose_3d.y;
+	pose_6d.z = pose_3d.z;
+	pose_6d.intensity = pose_3d.intensity;
+	pose_6d.roll = isam2_keypose_estimate.rotation().roll();
+	pose_6d.pitch = isam2_keypose_estimate.rotation().pitch();
+	pose_6d.yaw = isam2_keypose_estimate.rotation().yaw();
+	pose_6d.time = robots[robot_id].time_cloud_input; // keyframe timestamp
+	keyposes_cloud_6d->push_back(pose_6d);
+
+	RCLCPP_INFO(
+		this->get_logger(), 
+		"save: [%d] -- [%d] -- Translation: x = %.3f, y = %.3f, z = %.3f, Rotation: roll = %.3f, pitch = %.3f, yaw = %.3f.", 
+		robot_id, 
+		poses_number, 
+		isam2_keypose_estimate.translation().x(), 
+		isam2_keypose_estimate.translation().y(), 
+		isam2_keypose_estimate.translation().z(), 
+		isam2_keypose_estimate.rotation().roll(), 
+		isam2_keypose_estimate.rotation().pitch(), 
+		isam2_keypose_estimate.rotation().yaw()
+	);
+
+	// save path for viz
+	updateLocalPath(pose_6d);
+	updateGlobalPath(new_pose_to);
+}
+
+void distributedMapping::updateLocalPath(
+	const PointPose6D& pose
+){
+	static geometry_msgs::msg::PoseStamped pose_stamped_msg;
+	pose_stamped_msg.header.stamp = this->get_clock()->now();
+	pose_stamped_msg.header.frame_id = world_frame_;
+	pose_stamped_msg.pose.position.x = pose.x;
+	pose_stamped_msg.pose.position.y = pose.y;
+	pose_stamped_msg.pose.position.z = pose.z;
+	tf2::Quaternion q;
+    q.setRPY(pose.roll, pose.pitch, pose.yaw);
+    pose_stamped_msg.pose.orientation = tf2::toMsg(q);
+
+    // Add the pose to thje local path
+    local_path.poses.push_back(pose_stamped_msg);
+};
+
+void distributedMapping::updateGlobalPath(
+	const Pose3& pose
+){
+	static geometry_msgs::msg::PoseStamped pose_stamped_msg;
+	pose_stamped_msg.header.stamp = this->get_clock()->now();
+	pose_stamped_msg.header.frame_id = world_frame_;
+	pose_stamped_msg.pose.position.x = pose.translation().x();
+	pose_stamped_msg.pose.position.y = pose.translation().y();
+	pose_stamped_msg.pose.position.z = pose.translation().z();
+	pose_stamped_msg.pose.orientation.x = pose.rotation().toQuaternion().x();
+	pose_stamped_msg.pose.orientation.y = pose.rotation().toQuaternion().y();
+	pose_stamped_msg.pose.orientation.z = pose.rotation().toQuaternion().z();
+	pose_stamped_msg.pose.orientation.w = pose.rotation().toQuaternion().w();
+
+	global_path.poses.push_back(pose_stamped_msg);
+}
+
+/**
+ * @brief Updates the key poses and local path based on current pose estimates.
+ *
+ * This function updates the robot's key pose point clouds (3D and 6D), local path,
+ * and key pose estimates using the latest ISAM2 estimates. If an intra-robot loop
+ * closure is detected, it clears the local path and processes the new key poses.
+ *
+ * @return true if updates were made, false otherwise.
+ */
+bool distributedMapping::updatePoses(){
+
+    RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> checking if intra robot loop closure has occured for [%d]", robot_id);
+
+	bool return_value = false;
+
+	if(keyposes_cloud_3d->empty()){
+		return return_value;
+	}
+	if(intra_robot_loop_close_flag){
+		// clear path
+		local_path.poses.clear();
+
+		// add estimates
+		for(const Values::ConstKeyValuePair &key_value: isam2_current_estimates){
+			//update key poses
+			Symbol key = key_value.key;
+			int index = key.index();
+			Pose3 pose = isam2_current_estimates.at<Pose3>(key);
+
+			keyposes_cloud_3d->points[index].x = pose.translation().x();
+			keyposes_cloud_3d->points[index].y = pose.translation().y();
+			keyposes_cloud_3d->points[index].z = pose.translation().z();
+
+			keyposes_cloud_6d->points[index].x = keyposes_cloud_3d->points[index].x;
+			keyposes_cloud_6d->points[index].y = keyposes_cloud_3d->points[index].y;
+			keyposes_cloud_6d->points[index].z = keyposes_cloud_3d->points[index].z;
+			keyposes_cloud_6d->points[index].roll = pose.rotation().roll();
+			keyposes_cloud_6d->points[index].pitch = pose.rotation().pitch();
+			keyposes_cloud_6d->points[index].yaw = pose.rotation().yaw();
+			
+
+			updateLocalPath(keyposes_cloud_6d->points[index]);
+		}
+		// Reset the intra-robot loop closre flag and set return value to true
+        intra_robot_loop_close_flag = false;
+        return_value = true;
+	}
+	// copy the updated keyposes
+    *copy_keyposes_cloud_3d = *keyposes_cloud_3d;
+    *copy_keyposes_cloud_6d = *keyposes_cloud_6d;
+
+    // update the most recent keypose, representing robots current position
+    isam2_keypose_estimate = pclPointTogtsamPose3(keyposes_cloud_6d->back());
+    return return_value;
+}
+
+void distributedMapping::makeIrisDescriptor(){
+	while(!store_descriptors.empty()){
+		auto msg_data = store_descriptors.front().second;
+		auto msg_id = store_descriptors.front().first;
+		store_descriptors.pop_front();
+		keyframe_descriptor->saveDescriptorAndKey(msg_data.values.data(), msg_id, msg_data.index); // default using LiDAR IRIS Descriptor
+	}
+	if(initial_values->empty() || (!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_)){
+		return;
+	}
+
+	// downsample keyframe
+	cloud_for_descript_ds->clear();
+	downsample_filter_for_descriptor.setInputCloud(robots[robot_id].keyframe_cloud);
+	downsample_filter_for_descriptor.filter(*cloud_for_descript_ds);
+
+	auto descriptor_vec = keyframe_descriptor->makeAndSaveDescriptorAndKey(*cloud_for_descript_ds, robot_id, initial_values->size()-1); // default using LiDAR IRIS Descriptor
+	RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> Finished makeIrisDescriptors[%d].", robot_id);
+
+	// extract descriptors values
+	global_descriptor_msg.values.swap(descriptor_vec);
+	// keyfame index
+	global_descriptor_msg.index = initial_values->size()-1;
+	global_descriptor_msg.header.stamp = robots[robot_id].time_cloud_input_stamp;
+	// publish message
+	robots[robot_id].pub_descriptors->publish(global_descriptor_msg);
+}

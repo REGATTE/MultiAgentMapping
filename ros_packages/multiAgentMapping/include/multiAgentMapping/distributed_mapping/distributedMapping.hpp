@@ -62,7 +62,7 @@ class distributedMapping : public paramsServer{
         void updateLocalPath(
 			const PointPose6D& pose);
 		bool updatePoses();
-		void makeDescriptors();
+		void makeIrisDescriptor();
 		void publishPath();
 		void publishTransformation(
 			const rclcpp::Time& timestamp);

@@ -91,7 +91,7 @@ struct singleRobot {
 	multi_agent_mapping::msg::NeighborEstimate estimate_msg; // pose and rotation estimate msg
 	pcl::PointCloud<PointPose3D>::Ptr keyframe_cloud; // recent keyframe pointcloud
 	std::vector<pcl::PointCloud<PointPose3D>> keyframe_cloud_array; // and its array
-	Pose3 piror_odom; // piror factor
+	Pose3 prior_odom; // piror factor
 };
 
 class paramsServer : public rclcpp::Node {
@@ -131,6 +131,10 @@ class paramsServer : public rclcpp::Node {
 
         LiDARType sensor_;
         int n_scan;
+
+        // keypose threshold
+        float surroundingkeyframeAddingDistThreshold;
+        float surroundingkeyframeAddingAngleThreshold;
 
         // CPU params
         int onboard_cpu_cores_num_; // cores number of onboard unit

@@ -40,6 +40,12 @@ paramsServer::paramsServer() : Node("params_server_node"){
     this->declare_parameter<int>(robot_namespace + "/n_scan", 128); // default -> 128 [VLS 128 used]
     this->get_parameter(robot_namespace + "/n_scan", n_scan);
 
+    // threshold for keyframes
+    this->declare_parameter<float>("surroundingkeyframeAddingDistThreshold", 1.0);  // Default: 1.0m
+    this->get_parameter("surroundingkeyframeAddingDistThreshold", surroundingkeyframeAddingDistThreshold);
+    this->declare_parameter<float>("surroundingkeyframeAddingAngleThreshold", 0.2);  // Default: 0.2 radian
+    this->get_parameter("surroundingkeyframeAddingAngleThreshold", surroundingkeyframeAddingAngleThreshold);
+
     // cpu params
     // Declare parameters with default values
     this->declare_parameter<int>(robot_namespace + "/onboard_cpu_cores_num", 4);  // Default: 4 cores
