@@ -74,6 +74,7 @@ include_directories(
 add_library(distributed_mapping_lib
   src/distributed_mapping/paramsServer.cpp
   src/distributed_mapping/lidarIrisDescriptor.cpp
+  src/distributed_mapping/distributedMapping.cpp
   src/distributed_mapping/distributedMappingBasis.cpp
 )
 
