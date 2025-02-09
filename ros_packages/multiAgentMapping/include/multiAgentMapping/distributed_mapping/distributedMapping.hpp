@@ -66,7 +66,8 @@ class distributedMapping : public paramsServer{
 		void publishPath();
 		void publishTransformation(
 			const rclcpp::Time& timestamp);
-		void loopClosureThread();
+		void intraLoopClosureThread();
+		void interLoopClosureThread();
 		void globalMapThread();
     
     private:
@@ -146,12 +147,11 @@ class distributedMapping : public paramsServer{
         
         void run();
 
-        void performRSIntraLoopClosure();
+        void performRadiusSearchIntraLoopClosure();
 
 		int detectLoopClosureDistance(
 			const int& cur_ptr);
 		
-		void performIntraLoopClosure();
 
 		void calculateTransformation(
 			const int& loop_key_cur,

@@ -102,123 +102,6 @@ void distributedMapping::loopInfoHandler(
 	}
 }
 
-void distributedMapping::calculateTransformation(
-    const int& loop_key0,
-    const int& loop_key1
-){
-    if (loop_key0 >= copy_keyposes_cloud_6d->size()) {
-        RCLCPP_ERROR(this->get_logger(), "[LoopClosureUtils : calculateTransformation] -> Index out of bounds: loop_key0=%d, copy_keyposes_cloud_6d size=%lu", 
-                    loop_key0, copy_keyposes_cloud_6d->size());
-        throw std::out_of_range("[LoopClosureUtils : calculateTransformation] -> loop_key0 is out of bounds of copy_keyposes_cloud_6d.");
-    }
-
-    // get initial pose
-	Pose3 loop_pose0 = pclPointTogtsamPose3(copy_keyposes_cloud_6d->points[loop_key0]);
-	Pose3 loop_pose1 = pclPointTogtsamPose3(copy_keyposes_cloud_6d->points[loop_key1]);
-
-    // extract cloud
-	pcl::PointCloud<PointPose3D>::Ptr scan_cloud(new pcl::PointCloud<PointPose3D>());
-	pcl::PointCloud<PointPose3D>::Ptr scan_cloud_ds(new pcl::PointCloud<PointPose3D>());
-	loopFindNearKeyframes(scan_cloud, loop_key0, 0);
-	downsample_filter_for_intra_loop.setInputCloud(scan_cloud);
-	downsample_filter_for_intra_loop.filter(*scan_cloud_ds);
-	pcl::PointCloud<PointPose3D>::Ptr map_cloud(new pcl::PointCloud<PointPose3D>());
-	pcl::PointCloud<PointPose3D>::Ptr map_cloud_ds(new pcl::PointCloud<PointPose3D>());
-	loopFindNearKeyframes(map_cloud, loop_key1, history_keyframe_search_num_);
-	downsample_filter_for_intra_loop.setInputCloud(map_cloud);
-	downsample_filter_for_intra_loop.filter(*map_cloud_ds);
-
-    // fail safe check for cloud
-	if(scan_cloud->size() < 300 || map_cloud->size() < 1000){
-		RCLCPP_ERROR(this->get_logger(), "[LoopClosureUtils : calculateTransformation] -> keyFrameCloud too little points 1");
-		return;
-	}
-
-    // publish cloud
-	if(pub_scan_of_scan2map->get_subscription_count() != 0)
-	{
-		sensor_msgs::msg::PointCloud2 scan_cloud_msg;
-		pcl::toROSMsg(*scan_cloud_ds, scan_cloud_msg);
-		scan_cloud_msg.header.stamp = this->now();
-		scan_cloud_msg.header.frame_id = world_frame_;
-		pub_scan_of_scan2map->publish(scan_cloud_msg);
-	}
-	if(pub_map_of_scan2map->get_subscription_count() != 0)
-	{
-		sensor_msgs::msg::PointCloud2 map_cloud_msg;
-		pcl::toROSMsg(*map_cloud_ds, map_cloud_msg);
-		map_cloud_msg.header.stamp = this->now();
-		map_cloud_msg.header.frame_id = world_frame_;
-		pub_map_of_scan2map->publish(map_cloud_msg);
-	}
-
-    // icp settings
-	static pcl::IterativeClosestPoint<PointPose3D, PointPose3D> icp;
-	icp.setMaxCorrespondenceDistance(2*search_radius_);
-	icp.setMaximumIterations(50);
-	icp.setTransformationEpsilon(1e-6);
-	icp.setEuclideanFitnessEpsilon(1e-6);
-	icp.setRANSACIterations(0);
-	// icp.setRANSACOutlierRejectionThreshold(ransac_outlier_reject_threshold_);
-
-    // align clouds
-	icp.setInputSource(scan_cloud_ds);
-	icp.setInputTarget(map_cloud_ds);
-	pcl::PointCloud<PointPose3D>::Ptr unused_result(new pcl::PointCloud<PointPose3D>());
-	icp.align(*unused_result);
-
-    // Check if pass ICP fitness score
-    float fitness_score = icp.getFitnessScore();
-    if (icp.hasConverged() == false || fitness_score > fitness_score_threshold_) {
-        RCLCPP_DEBUG(this->get_logger(), "[LoopClosureUtils : calculateTransformation] -> \033[1;34m[IntraLoop<%d>] [%d]-[%d] ICP failed (%.2f > %.2f). Reject.\033[0m",
-                    robot_id, loop_key0, loop_key1, fitness_score, fitness_score_threshold_);
-        RCLCPP_INFO(this->get_logger(), "[LoopClosureUtils : calculateTransformation] -> [IntraLoop<%d>] ICP failed (%.2f > %.2f). Reject.", 
-                    robot_id, fitness_score, fitness_score_threshold_);
-        return;
-    }
-
-    RCLCPP_DEBUG(this->get_logger(), "[LoopClosureUtils : calculateTransformation] -> \033[1;34m[IntraLoop<%d>] [%d]-[%d] ICP passed (%.2f < %.2f). Add.\033[0m", 
-                robot_id, loop_key0, loop_key1, fitness_score, fitness_score_threshold_);
-    RCLCPP_INFO(this->get_logger(), "[LoopClosureUtils : calculateTransformation] -> [IntraLoop<%d>] ICP passed (%.2f < %.2f). Add.", 
-                robot_id, fitness_score, fitness_score_threshold_);
-
-    // get pose transformation
-	float x, y, z, roll, pitch, yaw;
-	Eigen::Affine3f icp_final_tf;
-	icp_final_tf = icp.getFinalTransformation();
-	pcl::getTranslationAndEulerAngles(icp_final_tf, x, y, z, roll, pitch, yaw);
-	Eigen::Affine3f origin_tf = gtsamPoseToAffine3f(loop_pose0);
-	Eigen::Affine3f correct_tf = icp_final_tf * origin_tf;
-	pcl::getTranslationAndEulerAngles(correct_tf, x, y, z, roll, pitch, yaw);
-	Pose3 pose_from = Pose3(Rot3::RzRyRx(roll, pitch, yaw), Point3(x, y, z));
-	Pose3 pose_to = loop_pose1;
-	Pose3 pose_between = pose_from.between(pose_to);
-	RCLCPP_INFO(this->get_logger(), "[LoopClosureUtils : calculateTransformation] -> [IntraLoop<%d>] pose_between: %.2f %.2f %.2f", 
-            robot_id, pose_between.translation().x(), pose_between.translation().y(), pose_between.translation().z());
-
-    // add loop factor
-	Vector vector6(6);
-	vector6 << fitness_score, fitness_score, fitness_score, fitness_score, fitness_score, fitness_score;
-	noiseModel::Diagonal::shared_ptr loop_noise = noiseModel::Diagonal::Variances(vector6);
-	NonlinearFactor::shared_ptr factor(new BetweenFactor<Pose3>(
-		Symbol('a'+robot_id, loop_key0), Symbol('a'+robot_id, loop_key1), pose_between, loop_noise));
-	isam2_graph.add(factor);
-	local_pose_graph->add(factor);
-	local_pose_graph_no_filtering->add(factor);
-	sent_start_optimization_flag = true; // enable distributed mapping
-	intra_robot_loop_close_flag = true;
-
-    // save loop factor in local map (for PCM)
-	auto new_factor = boost::dynamic_pointer_cast<BetweenFactor<Pose3>>(factor);
-	Matrix covariance = loop_noise->covariance();
-	robot_local_map.addTransform(*new_factor, covariance);
-
-	auto it = loop_indexs.find(loop_key0);
-	if(it == loop_indexs.end() || (it != loop_indexs.end() && it->second != loop_key1)){
-		loop_indexs[loop_key0] = loop_key1;
-	}
-}
-
 void distributedMapping::loopFindGlobalNearKeyframes(
 	pcl::PointCloud<PointPose3D>::Ptr& near_keyframes,
 	const int& key,
@@ -254,70 +137,157 @@ void distributedMapping::loopFindGlobalNearKeyframes(
 	}
 }
 
-
+/**
+ * @brief Finds and extracts nearby keyframes around a specified keyframe index.
+ * 
+ * This function searches for nearby keyframes within a specified range of indices 
+ * relative to the given keyframe and transforms the associated point clouds to 
+ * accumulate them into a single point cloud representing the local neighborhood.
+ * 
+ * @param near_keyframes A point cloud pointer where the transformed nearby keyframes will be stored.
+ * @param key The index of the keyframe around which the search is performed.
+ * @param search_num The number of keyframes to search before and after the given keyframe.
+ */
 void distributedMapping::loopFindNearKeyframes(
-	pcl::PointCloud<PointPose3D>::Ptr& near_keyframes,
-	const int& key,
-	const int& search_num)
+    pcl::PointCloud<PointPose3D>::Ptr& near_keyframes,
+    const int& key,
+    const int& search_num)
 {
-	// extract near keyframes
-	near_keyframes->clear();
-	int pose_num = copy_keyposes_cloud_6d->size();
-	if (pose_num >= robots[robot_id].keyframe_cloud_array.size()) {
+    // Clear the output point cloud to prepare for new data.
+    near_keyframes->clear();
+
+    int pose_num = copy_keyposes_cloud_6d->size();  // Total number of keyframes available.
+
+    // Check for index out-of-bounds issues in the keyframe cloud array.
+    if (pose_num >= robots[robot_id].keyframe_cloud_array.size()) {
         RCLCPP_ERROR(this->get_logger(), 
-             "[LoopClosureUtils : loopFindNearKeyframe] -> Index out of bounds: pose_num=%d, keyframe_cloud_array size=%zu for robot_id=%d", 
-             pose_num, robots[robot_id].keyframe_cloud_array.size(), robot_id);
+            "[LoopClosureUtils : loopFindNearKeyframe] -> Index out of bounds: pose_num=%d, keyframe_cloud_array size=%zu for robot_id=%d", 
+            pose_num, robots[robot_id].keyframe_cloud_array.size(), robot_id);
         throw std::out_of_range("[LoopClosureUtils : loopFindNearKeyframe] -> pose_num is out of bounds of keyframe_cloud_array.");
     }
 
-	for(int i = -search_num; i <= search_num; ++i){
-		int key_near = key + i;
-		if(key_near < 0 || key_near >= pose_num){
-			continue;
-		}
-		*near_keyframes += *transformPointCloud(
-			robots[robot_id].keyframe_cloud_array[key_near], &copy_keyposes_cloud_6d->points[key_near]);
-	}
+    // Search for keyframes within the specified range.
+    for(int i = -search_num; i <= search_num; ++i){
+        int key_near = key + i;  // Calculate the nearby keyframe index.
 
-	if(near_keyframes->empty()){
-		return;
-	}
+        // Skip keyframes that are out of bounds.
+        if(key_near < 0 || key_near >= pose_num){
+            continue;
+        }
+
+        // Transform and accumulate the point cloud of the nearby keyframe.
+        *near_keyframes += *transformPointCloud(
+            robots[robot_id].keyframe_cloud_array[key_near], 
+            &copy_keyposes_cloud_6d->points[key_near]
+        );
+    }
+
+    // If no nearby keyframes were found, simply return.
+    if(near_keyframes->empty()){
+        return;
+    }
 }
 
+/**
+ * @brief Updates the pose estimate for a given neighbor robot in the distributed mapping system.
+ * 
+ * This function updates or inserts a pose estimate received from a neighboring robot, ensuring that
+ * the trajectory data is properly managed and that start and end pose IDs are updated accordingly.
+ * 
+ * @param rid The robot ID of the neighboring robot.
+ * @param key The key identifying the specific pose within the trajectory.
+ * @param pose The pose estimate with its associated covariance.
+ */
 void distributedMapping::updatePoseEstimateFromNeighbor(
-	const int& rid,
-	const Key& key,
-	const graph_utils::PoseWithCovariance& pose)
+    const int& rid,
+    const Key& key,
+    const graph_utils::PoseWithCovariance& pose)
 {
-	graph_utils::TrajectoryPose trajectory_pose;
-	trajectory_pose.id = key;
-	trajectory_pose.pose = pose;
-	// find trajectory
-	if(pose_estimates_from_neighbors.find(rid) != pose_estimates_from_neighbors.end()){
-		// update pose
-		if(pose_estimates_from_neighbors.at(rid).trajectory_poses.find(key) != 
-			pose_estimates_from_neighbors.at(rid).trajectory_poses.end()){
-			pose_estimates_from_neighbors.at(rid).trajectory_poses.at(key) = trajectory_pose;
-		}
-		// new pose
-		else {
-			pose_estimates_from_neighbors.at(rid).trajectory_poses.insert(make_pair(key, trajectory_pose));
-			if(key < pose_estimates_from_neighbors.at(rid).start_id)
-			{
-				pose_estimates_from_neighbors.at(rid).start_id = key;
-			}
-			if(key > pose_estimates_from_neighbors.at(rid).end_id)
-			{
-				pose_estimates_from_neighbors.at(rid).end_id = key;
-			}
-		}
-	}
-	// insert new trajectory
-	else {
-		graph_utils::Trajectory new_trajectory;
-		new_trajectory.trajectory_poses.insert(make_pair(key, trajectory_pose));
-		new_trajectory.start_id = key;
-		new_trajectory.end_id = key;
-		pose_estimates_from_neighbors.insert(make_pair(rid, new_trajectory));
-	}
+    graph_utils::TrajectoryPose trajectory_pose;  // Initialize a new trajectory pose.
+    trajectory_pose.id = key;                     // Set the pose ID.
+    trajectory_pose.pose = pose;                  // Set the pose with covariance.
+
+    // Check if a trajectory already exists for the given robot ID.
+    if(pose_estimates_from_neighbors.find(rid) != pose_estimates_from_neighbors.end()){
+        // If the pose already exists, update it.
+        if(pose_estimates_from_neighbors.at(rid).trajectory_poses.find(key) != pose_estimates_from_neighbors.at(rid).trajectory_poses.end()){
+            pose_estimates_from_neighbors.at(rid).trajectory_poses.at(key) = trajectory_pose;
+        }
+        // If the pose is new, insert it into the trajectory.
+        else {
+            pose_estimates_from_neighbors.at(rid).trajectory_poses.insert(make_pair(key, trajectory_pose));
+            
+            // Update the start and end IDs of the trajectory if necessary.
+            if(key < pose_estimates_from_neighbors.at(rid).start_id){
+                pose_estimates_from_neighbors.at(rid).start_id = key;
+            }
+            if(key > pose_estimates_from_neighbors.at(rid).end_id){
+                pose_estimates_from_neighbors.at(rid).end_id = key;
+            }
+        }
+    }
+    // If no trajectory exists for the robot ID, create a new one.
+    else {
+        graph_utils::Trajectory new_trajectory;  // Initialize a new trajectory.
+        new_trajectory.trajectory_poses.insert(make_pair(key, trajectory_pose));  // Insert the pose.
+        new_trajectory.start_id = key;  // Set the start ID to the current key.
+        new_trajectory.end_id = key;    // Set the end ID to the current key.
+
+        // Insert the new trajectory into the pose estimates map.
+        pose_estimates_from_neighbors.insert(make_pair(rid, new_trajectory));
+    }
+}
+
+
+/**
+ * @brief Detects a loop closure candidate based on spatial proximity to historical keyframes.
+ * 
+ * This function checks the surrounding keyframes within a specified search radius to identify 
+ * a potential loop closure candidate. It ensures the selected candidate is not within a certain 
+ * distance threshold of the current keyframe to avoid false positives from recently visited locations.
+ *
+ * @param cur_ptr Index of the current keyframe being evaluated for loop closure.
+ * 
+ * @return The index of the detected loop closure keyframe. Returns -1 if no valid loop closure is detected.
+ */
+int distributedMapping::detectLoopClosureDistance(
+    const int& cur_ptr
+){
+    int loop_key0 = cur_ptr;  // The current keyframe index being evaluated.
+    int loop_key1 = -1;       // Initialize loop closure candidate index as invalid.
+
+    // Find the closest historical keyframes within the search radius.
+    vector<int> indices;      // Indices of keyframes found within the search radius.
+    vector<float> distances;  // Distances to the keyframes found.
+    
+    // Set the KD-tree input cloud to search for nearby keyframes.
+    kdtree_history_keyposes->setInputCloud(copy_keyposes_cloud_3d);
+    
+    // Perform radius search around the current keyframe.
+    kdtree_history_keyposes->radiusSearch(
+        copy_keyposes_cloud_3d->points[cur_ptr], 
+        search_radius_, 
+        indices, 
+        distances, 
+        0  // Maximum number of neighbors to return (0 means all within radius).
+    );
+
+    // Iterate through the found keyframes to select a valid loop closure candidate.
+    for(int i = 0; i < (int)indices.size(); ++i){
+        int index = indices[i];  // Get the index of the candidate keyframe.
+
+        // Ensure the candidate is not a recent keyframe to avoid false positives.
+        if(loop_key0 > exclude_recent_frame_num_ + index){
+            loop_key1 = index;  // Valid loop closure candidate found.
+            break;  // Exit the loop once a valid candidate is identified.
+        }
+    } 
+
+    // If no valid loop closure candidate is found, return -1.
+    if(loop_key1 == -1 || loop_key0 == loop_key1){
+        return -1;
+    }
+
+    // Return the index of the detected loop closure keyframe.
+    return loop_key1;
 }

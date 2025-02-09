@@ -80,6 +80,7 @@
         "queue": "cpp",
         "stack": "cpp",
         "__node_handle": "cpp",
-        "core": "cpp"
+        "core": "cpp",
+        "__functional_03": "cpp"
     }
 }

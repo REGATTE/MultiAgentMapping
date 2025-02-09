@@ -78,6 +78,8 @@ add_library(distributed_mapping_lib
   src/distributed_mapping/distributedMappingBasis.cpp
   # loop closure
   src/distributed_mapping/loopClosureUtils.cpp
+  src/distributed_mapping/interLoopClosure.cpp
+  src/distributed_mapping/intraLoopClosure.cpp
 )
 
 target_include_directories(distributed_mapping_lib PUBLIC ${rclcpp_INCLUDE_DIRS})
