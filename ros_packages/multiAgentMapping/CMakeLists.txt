@@ -34,7 +34,7 @@ find_package(distributed_mapper_colcon REQUIRED)
 
 # Find and link libnabo
 find_path(LIBNABO_INCLUDE_DIRS "nabo/nabo.h" PATHS /usr/local/include)
-find_library(LIBNABO_LIBRARIES NAMES nabo PATHS /usr/local/lib)
+find_library(LIBNABO_LIBRARIES nabo PATHS /usr/local/lib REQUIRED)
 
 if(NOT LIBNABO_INCLUDE_DIRS OR NOT LIBNABO_LIBRARIES)
   message(FATAL_ERROR "libnabo not found. Ensure it is installed in /usr/local.")
@@ -80,11 +80,21 @@ add_library(distributed_mapping_lib
   src/distributed_mapping/loopClosureUtils.cpp
   src/distributed_mapping/interLoopClosure.cpp
   src/distributed_mapping/intraLoopClosure.cpp
+  # visualization
+  src/distributed_mapping/visualization.cpp
 )
 
 target_include_directories(distributed_mapping_lib PUBLIC ${rclcpp_INCLUDE_DIRS})
 ament_target_dependencies(distributed_mapping_lib ${COMMON_DEPENDENCIES} GTSAM Eigen3 rosidl_default_runtime)
-target_link_libraries(distributed_mapping_lib  ${PCL_LIBRARIES}  ${OpenCV_LIBRARIES}  ${Boost_LIBRARIES}  ${GTSAM_LIBRARIES} ${libnabo_LIBRARIES} ${libnabo_LIBRARIES} OpenMP::OpenMP_CXX "${cpp_typesupport_target}")
+target_link_libraries(distributed_mapping_lib  
+  ${PCL_LIBRARIES}  
+  ${OpenCV_LIBRARIES}  
+  ${Boost_LIBRARIES}  
+  ${GTSAM_LIBRARIES} 
+  ${LIBNABO_LIBRARIES}
+  OpenMP::OpenMP_CXX 
+  "${cpp_typesupport_target}" 
+  distributed_mapper_colcon::distributed_mapper)
 
 # build LIO SAM Executables
 add_executable(${PROJECT_NAME}_featureExtraction src/LIO_SAM/featureExtraction.cpp)
@@ -102,9 +112,9 @@ target_link_libraries(${PROJECT_NAME}_imuPreintegration gtsam "${cpp_typesupport
 add_executable(${PROJECT_NAME}_mapOptimization src/LIO_SAM/mapOptimization.cpp)
 ament_target_dependencies(${PROJECT_NAME}_mapOptimization rclcpp rclpy std_msgs sensor_msgs geometry_msgs nav_msgs pcl_conversions pcl_msgs visualization_msgs tf2 tf2_ros tf2_eigen tf2_sensor_msgs tf2_geometry_msgs OpenCV PCL GTSAM)
 if (OpenMP_CXX_FOUND)
-  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX distributed_mapper_colcon::distributed_mapper distributed_mapping_lib)
+  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" OpenMP::OpenMP_CXX distributed_mapper_colcon::distributed_mapper distributed_mapping_lib ${LIBNABO_LIBRARIES})
 else()
-  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" distributed_mapper_colcon::distributed_mapper distributed_mapping_lib)
+  target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" distributed_mapper_colcon::distributed_mapper distributed_mapping_lib ${LIBNABO_LIBRARIES})
 endif()
 
 install(
