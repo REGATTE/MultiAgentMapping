@@ -268,6 +268,7 @@ distributedMapping::distributedMapping() : paramsServer(){
 	RCLCPP_INFO(logger, "distributed mapping class initialization finish");
 }
 
+distributedMapping::~distributedMapping(){}
 
 pcl::PointCloud<PointPose3D>::Ptr distributedMapping::getLocalKeyposesCloud3D()
 {
