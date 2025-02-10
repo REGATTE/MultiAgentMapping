@@ -16,7 +16,7 @@ paramsServer::paramsServer() : Node("params_server_node"){
     // extract last char, convert to int and assign as robot_id
     robot_id = robot_namespace.back() - '0';
 
-    this->declare_parameter<int>("number_of_robots", 1); // declaring the param with default of 1
+    this->declare_parameter<int>("number_of_robots", 2); // declaring the param with default of 2
     this->get_parameter("number_of_robots", number_of_robots_); // Retrieve the parameter value
 
     if (number_of_robots_ < 1){
@@ -102,10 +102,10 @@ paramsServer::paramsServer() : Node("params_server_node"){
     this->declare_parameter<float>(robot_namespace + "/descript_leaf_size", 0.1);
     this->get_parameter(robot_namespace + "/descript_leaf_size", descript_leaf_size_);
 
-    this->declare_parameter<float>(robot_namespace + "/intra_robot_loop_closure_enable", true);
+    this->declare_parameter<bool>(robot_namespace + "/intra_robot_loop_closure_enable", true);
     this->get_parameter(robot_namespace + "/intra_robot_loop_closure_enable", intra_robot_loop_closure_enable_);
 
-    this->declare_parameter<float>(robot_namespace + "/inter_robot_loop_closure_enable", true);
+    this->declare_parameter<bool>(robot_namespace + "/inter_robot_loop_closure_enable", true);
     this->get_parameter(robot_namespace + "/inter_robot_loop_closure_enable", inter_robot_loop_closure_enable_);
 
     descriptor_type_num_ = DescriptorType::LidarIris;

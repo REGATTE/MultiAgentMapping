@@ -333,14 +333,20 @@ public:
 				Point3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5]));
             if(dist_mapping.saveFrame(pose_to)){
                 // keyframe
+                RCLCPP_INFO(this->get_logger(), "========================================");
+                RCLCPP_INFO(this->get_logger(), "[mapOptimization - saveFrame] -> Saving new keyframe");
                 pcl::PointCloud<pcl::PointXYZI>::Ptr keyframe(new pcl::PointCloud<pcl::PointXYZI>());
                 pcl::fromROSMsg(msgIn->cloud_deskewed, *keyframe);
 
+                RCLCPP_INFO(this->get_logger(), "[mapOptimization - processKeyframesAndPose] -> Processing new keyframe");
                 dist_mapping.processKeyframesAndPose(pose_to, keyframe, timeLaserInfoStamp);
 
                 if(dist_mapping.updatePoses()){
                     // clear map cache
                     laserCloudMapContainer.clear();
+                    RCLCPP_INFO(this->get_logger(), "[mapOptimization] -> IntraRobot Loop closure Detected");
+                } else {
+                    RCLCPP_INFO(this->get_logger(), "[mapOptimization] -> IntraRobot Loop closure not Detected");
                 }
 
                 // save updated transform
@@ -353,7 +359,9 @@ public:
                 transformTobeMapped[5] = latest_estimate.translation().z();
 
                 dist_mapping.makeIrisDescriptor();
+                RCLCPP_INFO(this->get_logger(), "[mapOptimization] -> Built descriptors from keyframes");
                 dist_mapping.publishPath();
+                RCLCPP_INFO(this->get_logger(), "[mapOptimization] -> Publishing path from keyposes");
 
                 // save all the received edge and surf points
                 pcl::PointCloud<PointType>::Ptr keyframe_corner(new pcl::PointCloud<PointType>());
@@ -364,6 +372,7 @@ public:
                 // save key frame cloud
                 cornerCloudKeyFrames.push_back(keyframe_corner);
                 surfCloudKeyFrames.push_back(keyframe_surf);
+                RCLCPP_INFO(this->get_logger(), "[mapOptimization] -> Saving keyframe cloud");
             }
 
             dist_mapping.publishTransformation(timeLaserInfoStamp);

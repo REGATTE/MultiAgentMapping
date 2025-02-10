@@ -384,6 +384,9 @@ void distributedMapping::processKeyframesAndPose(
 	const pcl::PointCloud<PointPose3D>::Ptr frame_to,
 	const rclcpp::Time& timestamp
 ){
+
+	RCLCPP_INFO(this->get_logger(), "[distributedMapping::processKeyframesAndPose] -> Accessing robot_id: %d", robot_id);
+
 	// save keyframe cloud
 	pcl::copyPointCloud(*frame_to, *robots[robot_id].keyframe_cloud);
 	robots[robot_id].keyframe_cloud_array.push_back(*robots[robot_id].keyframe_cloud);
@@ -391,12 +394,13 @@ void distributedMapping::processKeyframesAndPose(
 	robots[robot_id].time_cloud_input_stamp = timestamp;
 	robots[robot_id].time_cloud_input = timestamp.seconds();
 
-	// add prio factor if no prior poses
+	// add prior factor if no prior poses
 	Pose3 new_pose_to;
 	int poses_number = initial_values->size();
+	RCLCPP_INFO(this->get_logger(), "[distributedMapping::processKeyframesAndPose] -> Current poses_number: %d", poses_number);
 	Symbol current_symbol = Symbol('a' + robot_id, poses_number);
 	if(poses_number == 0){
-		RCLCPP_INFO(this->get_logger(), "Adding prior factor!!");
+		RCLCPP_INFO(this->get_logger(), "[distributedMapping::processKeyframesAndPose] -> Adding prior factor!!");
 		// save prior pose value
 		robots[robot_id].prior_odom = pose_to;
 		// add prior factor to graph
@@ -411,7 +415,7 @@ void distributedMapping::processKeyframesAndPose(
 
 		RCLCPP_INFO(
 			this->get_logger(), 
-			"createPrior: [%d] Translation: x = %.3f, y = %.3f, z = %.3f, Rotation: roll = %.3f, pitch = %.3f, yaw = %.3f.", 
+			"[distributedMapping::processKeyframesAndPose] -> createPrior: [%d] Translation: x = %.3f, y = %.3f, z = %.3f, Rotation: roll = %.3f, pitch = %.3f, yaw = %.3f.", 
 			robot_id, 
 			new_pose_to.translation().x(), 
 			new_pose_to.translation().y(), 
@@ -422,7 +426,7 @@ void distributedMapping::processKeyframesAndPose(
 		);
 	} else {
 		// add odometry factor if poses not empty
-		RCLCPP_INFO(this->get_logger(), "Adding odom factor!!");
+		RCLCPP_INFO(this->get_logger(), "[distributedMapping::processKeyframesAndPose] -> Adding odom factor!!");
 
 		// incremental odom data in local frame
 		auto pose_from = pclPointTogtsamPose3(keyposes_cloud_6d->points[poses_number - 1]);
@@ -451,7 +455,7 @@ void distributedMapping::processKeyframesAndPose(
 
 		RCLCPP_INFO(
 			this->get_logger(), 
-			"createOdom: [%d] [%d-%d] -- [From: x = %.3f, y = %.3f, z = %.3f, roll = %.3f, pitch = %.3f, yaw = %.3f], "
+			"[distributedMapping::processKeyframesAndPose] -> createOdom: [%d] [%d-%d] -- [From: x = %.3f, y = %.3f, z = %.3f, roll = %.3f, pitch = %.3f, yaw = %.3f], "
 			"[To: x = %.3f, y = %.3f, z = %.3f, roll = %.3f, pitch = %.3f, yaw = %.3f].", 
 			robot_id, 
 			poses_number - 1, 
@@ -472,7 +476,8 @@ void distributedMapping::processKeyframesAndPose(
 	}
 
 	//optimizing
-	isam2_graph.print("GTSAM Graph:\n");
+	isam2_graph.print("[distributedMapping::processKeyframesAndPose] -> GTSAM Graph:\n");
+	isam2->update(isam2_graph, isam2_initial_values);
 	isam2_graph.resize(0);
 	isam2_initial_values.clear();
 	isam2_current_estimates = isam2->calculateEstimate();
@@ -485,6 +490,7 @@ void distributedMapping::processKeyframesAndPose(
 	pose_3d.z = isam2_keypose_estimate.translation().z();
 	pose_3d.intensity = poses_number; // keyframe index
 	keyposes_cloud_3d->push_back(pose_3d);
+	RCLCPP_INFO(this->get_logger(), "[distributedMapping::processKeyframesAndPose] -> Saved pose in Local Frame");
 
 	static PointPose6D pose_6d;
 	pose_6d.x = pose_3d.x;
@@ -496,10 +502,11 @@ void distributedMapping::processKeyframesAndPose(
 	pose_6d.yaw = isam2_keypose_estimate.rotation().yaw();
 	pose_6d.time = robots[robot_id].time_cloud_input; // keyframe timestamp
 	keyposes_cloud_6d->push_back(pose_6d);
+	RCLCPP_INFO(this->get_logger(), "[distributedMapping::processKeyframesAndPose] -> Saved pose in Global Frame");
 
 	RCLCPP_INFO(
 		this->get_logger(), 
-		"save: [%d] -- [%d] -- Translation: x = %.3f, y = %.3f, z = %.3f, Rotation: roll = %.3f, pitch = %.3f, yaw = %.3f.", 
+		"[distributedMapping::processKeyframesAndPose] -> save: robot_id: [%d] & pose_number:  [%d] -- Translation: x = %.3f, y = %.3f, z = %.3f, Rotation: roll = %.3f, pitch = %.3f, yaw = %.3f.", 
 		robot_id, 
 		poses_number, 
 		isam2_keypose_estimate.translation().x(), 
