@@ -10,24 +10,27 @@ distributedMapping::distributedMapping() : paramsServer(){
     RCLCPP_INFO(logger, "Distributed mapping class initialization. Log name: %s, Log directory: %s",  log_name.c_str(), log_dir.c_str());
 
     singleRobot robot;
-    for (int it=0; it<number_of_robots_; it++){
+    for (int it=1; it<=number_of_robots_; it++){
         // robot info
         robot.robot_id = it;
         robot.robot_name = "/a";
-        robot.robot_name[1] += it;
+        robot.robot_name[1] += (it - 1);
         robot.odom_frame_ = odom_frame_;
 
         // this robot
         if (it == robot_id){
+            RCLCPP_INFO(this->get_logger(), "Robot ID: %d", robot_id);
             if(intra_robot_loop_closure_enable_ || inter_robot_loop_closure_enable_){
                 // publish global descriptors
                 robot.pub_descriptors = this->create_publisher<multi_agent_mapping::msg::GlobalDescriptor>(
                     robot.robot_name + "/distributedMapping/globalDescriptors", 5
                 );
+                RCLCPP_INFO(this->get_logger(), "Publishing to: %s", (robot.robot_name + "/distributedMapping/globalDescriptors").c_str());
                 // publish Loop Info
                 robot.pub_loop_info = this->create_publisher<multi_agent_mapping::msg::LoopInfo>(
                     robot.robot_name + "/distributedMapping/loopInfo", 5
                 );
+                RCLCPP_INFO(this->get_logger(), "Publishing to: %s", (robot.robot_name + "/distributedMapping/loopInfo").c_str());
             }
             if(global_optimization_enable_){
                 // publish optimization state

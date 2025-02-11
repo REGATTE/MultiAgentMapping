@@ -16,7 +16,7 @@ paramsServer::paramsServer() : Node("params_server_node"){
     // extract last char, convert to int and assign as robot_id
     robot_id = robot_namespace.back() - '0';
 
-    this->declare_parameter<int>("number_of_robots", 2); // declaring the param with default of 2
+    this->declare_parameter<int>("number_of_robots", 3); // declaring the param with default of 2
     this->get_parameter("number_of_robots", number_of_robots_); // Retrieve the parameter value
 
     if (number_of_robots_ < 1){
