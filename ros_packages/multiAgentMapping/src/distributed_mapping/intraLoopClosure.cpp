@@ -170,6 +170,28 @@ void distributedMapping::calculateTransformation(
 	}
 }
 
+void distributedMapping::performDescriptorBasedIntraLoopClosure()
+{
+	if(keyframe_descriptor->getSize(robot_id) <= intra_robot_loop_ptr || !intra_robot_loop_closure_enable_){	
+		return;
+	}
+
+	// find intra loop closure with global descriptor
+	auto matching_result = keyframe_descriptor->detectIntraLoopClosureID(intra_robot_loop_ptr);
+	int loop_key0 = intra_robot_loop_ptr;
+	int loop_key1 = matching_result.first;
+	intra_robot_loop_ptr++;
+
+	if(matching_result.first < 0) // no loop found
+	{
+		return;
+	}
+
+	RCLCPP_INFO(this->get_logger(), "[IntraLoop<%d>] [%d] and [%d].", robot_id, loop_key0, loop_key1);
+
+	calculateTransformation(loop_key0, loop_key1);
+}
+
 /**
  * @brief Thread function for handling intra-robot loop closures.
  * 
@@ -182,6 +204,8 @@ void distributedMapping::intraLoopClosureThread(){
     if(!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_){
         return;
     }
+	RCLCPP_INFO(this->get_logger(), "+++++++++++++++++++++++++++++++++");
+	RCLCPP_INFO(this->get_logger(), "Running INTRA_LOOP_CLOSURE_THREAD");
 
     // Set the loop rate based on the configured loop closure processing interval.
     rclcpp::Rate rate(1.0 / loop_closure_process_interval_);
@@ -192,5 +216,7 @@ void distributedMapping::intraLoopClosureThread(){
 
         // Find intra-loop closures by searching for nearby keyframes within a specified radius.
         performRadiusSearchIntraLoopClosure();
+
+		performDescriptorBasedIntraLoopClosure();
     }
 }

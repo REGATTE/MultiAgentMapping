@@ -148,11 +148,11 @@ class distributedMapping : public paramsServer{
         void run();
 
         void performRadiusSearchIntraLoopClosure();
+		void performDescriptorBasedIntraLoopClosure();
 
 		int detectLoopClosureDistance(
 			const int& cur_ptr);
 		
-
 		void calculateTransformation(
 			const int& loop_key_cur,
 			const int& loop_key_pre);

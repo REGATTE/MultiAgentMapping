@@ -110,7 +110,7 @@ void distributedMapping::loopFindGlobalNearKeyframes(
 	// extract near keyframes
 	near_keyframes->clear();
 	int pose_num = initial_values->size();
-	if (pose_num >= robots[robot_id].keyframe_cloud_array.size()) {
+	if (pose_num > robots[robot_id].keyframe_cloud_array.size()) {
         RCLCPP_ERROR(this->get_logger(), 
              "[LoopClosureUtils : loopFindGlobalNearKeyframe] -> Index out of bounds: pose_num=%d, keyframe_cloud_array size=%zu for robot_id=%d", 
              pose_num, robots[robot_id].keyframe_cloud_array.size(), robot_id);
@@ -158,13 +158,13 @@ void distributedMapping::loopFindNearKeyframes(
 
     int pose_num = copy_keyposes_cloud_6d->size();  // Total number of keyframes available.
 
-    // Check for index out-of-bounds issues in the keyframe cloud array.
-    if (pose_num >= robots[robot_id].keyframe_cloud_array.size()) {
+    if (pose_num > robots[robot_id].keyframe_cloud_array.size()) {
         RCLCPP_ERROR(this->get_logger(), 
-            "[LoopClosureUtils : loopFindNearKeyframe] -> Index out of bounds: pose_num=%d, keyframe_cloud_array size=%zu for robot_id=%d", 
-            pose_num, robots[robot_id].keyframe_cloud_array.size(), robot_id);
-        throw std::out_of_range("[LoopClosureUtils : loopFindNearKeyframe] -> pose_num is out of bounds of keyframe_cloud_array.");
+            "pose_num (%d) exceeds keyframe_cloud_array size (%zu).", 
+            pose_num, robots[robot_id].keyframe_cloud_array.size());
+        throw std::out_of_range("pose_num is out of bounds of keyframe_cloud_array.");
     }
+
 
     // Search for keyframes within the specified range.
     for(int i = -search_num; i <= search_num; ++i){
