@@ -12,7 +12,7 @@ def generate_launch_description():
     robot_namespace_ = LaunchConfiguration('namespace')
     param_file_name = LaunchConfiguration('params')
     xacro_path = os.path.join(share_dir, 'config', 'robot.urdf.xacro')
-    rviz_config_file = os.path.join(share_dir, 'config', 'rviz2.rviz')
+    rviz_config_file = PathJoinSubstitution([share_dir, 'config', 'rviz', LaunchConfiguration('rviz_config')])
 
     robot_namespace_declare = DeclareLaunchArgument(
         'namespace',
@@ -25,11 +25,18 @@ def generate_launch_description():
         description='Name of the ROS 2 parameter file to use. Example: params_scout_1_1.yaml'
     )
 
+    rviz_config_declare = DeclareLaunchArgument(
+        'rviz_config',
+        default_value='scout_x_x.rviz',
+        description='Path to the RViz2 configuration file'
+    )
+
     print("URDF file path: {}".format(xacro_path))
 
     return LaunchDescription([
         params_declare,
         robot_namespace_declare,
+        rviz_config_declare,
         Node(
             package='tf2_ros',
             executable='static_transform_publisher',

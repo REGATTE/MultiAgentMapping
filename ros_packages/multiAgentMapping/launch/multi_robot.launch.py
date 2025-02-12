@@ -13,7 +13,6 @@ def generate_launch_description():
     # Declare launch arguments
     params_1 = LaunchConfiguration('params_1')
     params_2 = LaunchConfiguration('params_2')
-    rviz_config_file = LaunchConfiguration('rviz_config')
 
     declare_params_1 = DeclareLaunchArgument(
         'params_1',
@@ -27,20 +26,6 @@ def generate_launch_description():
         description='Parameter file for scout_2_2'
     )
 
-    declare_rviz_config = DeclareLaunchArgument(
-        'rviz_config',
-        default_value=PathJoinSubstitution([share_dir, 'config', 'rviz', 'dist_mapping.rviz']),
-        description='Path to the RViz2 config file'
-    )
-
-    # Launch RViz2
-    rviz2 = Node(
-        package='rviz2',
-        executable='rviz2',
-        name='rviz2',
-        output='screen',
-        arguments=['-d', rviz_config_file]
-    )
     # Launch Loop Visualization Node
     loop_visualization_node = Node(
         package='multi_agent_mapping',
@@ -52,17 +37,14 @@ def generate_launch_description():
 
     # Launch Scout 1
     scout_1 = GroupAction([
-        Node(
-            package='isaac_sim_pointcloud_full_publisher',
-            executable='full_pcd_pub.launch.py',
-            name='full_pcd_pub_scout_1_1',
-            output='screen',
-            parameters=[{'robot_namespace': 'scout_1_1', 'config_file': 'velodyne_vls_128.yaml'}],
-            additional_env={'ROS_DOMAIN_ID': '1'}
+        IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([ get_package_share_directory('isaac_sim_pointcloud_full_publisher'), 'launch', 'full_pcd_pub.launch.py'])),
+        launch_arguments={'robot_namespace': 'scout_1_1', 'config_file': 'velodyne_vls_128.yaml'}.items(),
         ),
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(PathJoinSubstitution([share_dir, 'launch', 'single_robot.launch.py'])),
-            launch_arguments={'namespace': '/scout_1_1', 'params': params_1}.items(),
+            launch_arguments={'namespace': '/scout_1_1', 'params': params_1, 'rviz_config': 'scout_1_1.rviz'}.items(),
         ),
         Node(
             package='domain_bridge',
@@ -76,17 +58,14 @@ def generate_launch_description():
 
     # Launch Scout 2
     scout_2 = GroupAction([
-        Node(
-            package='isaac_sim_pointcloud_full_publisher',
-            executable='full_pcd_pub.launch.py',
-            name='full_pcd_pub_scout_2_2',
-            output='screen',
-            parameters=[{'robot_namespace': 'scout_2_2', 'config_file': 'velodyne_vls_128.yaml'}],
-            additional_env={'ROS_DOMAIN_ID': '2'}
+        IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            PathJoinSubstitution([ get_package_share_directory('isaac_sim_pointcloud_full_publisher'), 'launch', 'full_pcd_pub.launch.py'])),
+        launch_arguments={'robot_namespace': 'scout_2_2', 'config_file': 'velodyne_vls_128.yaml'}.items(),
         ),
         IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(PathJoinSubstitution([share_dir, 'launch', 'run_params.launch.py'])),
-            launch_arguments={'namespace': '/scout_2_2', 'params': params_2}.items(),
+            PythonLaunchDescriptionSource(PathJoinSubstitution([share_dir, 'launch', 'single_robot.launch.py'])),
+            launch_arguments={'namespace': '/scout_2_2', 'params': params_2, 'rviz_config': 'scout_2_2.rviz'}.items(),
         ),
         Node(
             package='domain_bridge',
@@ -100,10 +79,8 @@ def generate_launch_description():
 
     return LaunchDescription([
         loop_visualization_node,
-        rviz2,
         declare_params_1,
         declare_params_2,
-        declare_rviz_config,
         scout_1,
         scout_2
     ])

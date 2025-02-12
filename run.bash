@@ -17,7 +17,7 @@ gnome-terminal -- bash -c "
 echo "Launching distributed mapping with the specified parameters for Scout_1_1 in a new terminal..."
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=1; 
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_1_1.yaml  namespace:=/scout_1_1;  
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_1_1.yaml  namespace:=/scout_1_1 rviz_config:=scout_1_1.rviz;  
     exec bash
 "
 
@@ -49,7 +49,7 @@ gnome-terminal -- bash -c "
 echo "Launching distributed mapping with the specified parameters for Scout_2_2 in a new terminal..."
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=2; 
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_2_2.yaml  namespace:=/scout_2_2;  
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_2_2.yaml  namespace:=/scout_2_2 rviz_config:=scout_2_2.rviz;  
     exec bash
 "
 

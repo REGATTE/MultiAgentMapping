@@ -12,6 +12,7 @@ def generate_launch_description():
     robot_namespace_ = LaunchConfiguration('namespace')
     param_file_name = LaunchConfiguration('params')
     xacro_path = os.path.join(share_dir, 'config', 'robot.urdf.xacro')
+    rviz_file = LaunchConfiguration('rviz_config')
 
     robot_namespace_declare = DeclareLaunchArgument(
         'namespace',
@@ -24,9 +25,16 @@ def generate_launch_description():
         description='Name of the ROS 2 parameter file to use. Example: params_scout_x_x.yaml'
     )
 
+    rviz_declare = DeclareLaunchArgument(
+        'rviz_config',
+        default_value='scout_x_x.rviz',
+        description='Name of the rviz config file to use. Example: params_scout_x_x.yaml'
+    )
+
     print("URDF file path: {}".format(xacro_path))
 
     return LaunchDescription([
+        rviz_declare,
         params_declare,
         robot_namespace_declare,
         Node(
@@ -77,6 +85,14 @@ def generate_launch_description():
             namespace=robot_namespace_,
             name='multi_agent_mapping_mapOptimization',
             parameters=[PathJoinSubstitution([share_dir, 'config', param_file_name])],
+            output='screen'
+        ),
+        Node(
+            package='rviz2',
+            executable='rviz2',
+            namespace=robot_namespace_,
+            name='rviz2',
+            arguments=[PathJoinSubstitution([share_dir, 'config', 'rviz', rviz_file])],
             output='screen'
         )
     ])
