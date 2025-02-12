@@ -20,7 +20,10 @@ void distributedMapping::performInterLoopClosure(){
 		return;
 	}
 
+	RCLCPP_INFO(this->get_logger(), "Performing inter loop closure function initiated!");
+
     // Step 1: Perform place recognition to find a candidate loop closure
+    RCLCPP_INFO(this->get_logger(), "[InterLoopClosure : performInterLoopClosure] -> find loop closure ID")
     auto matching_result = keyframe_descriptor->detectInterLoopClosureID(inter_robot_loop_ptr);
     // Retrieve robot and keyframe indices for the detected loop closure
     int loop_robot0 = keyframe_descriptor->getIndex(inter_robot_loop_ptr).first;
@@ -108,6 +111,7 @@ void distributedMapping::performExternLoopClosure(){
     if(loop_closures_candidates.empty() || !inter_robot_loop_closure_enable_){
 		return;
 	}
+    RCLCPP_INFO(this->get_logger(), "Performing extern inter loop closure function initiated!");
 
     // Step 1: Extract the loop closure candidate for verification
 	multi_agent_mapping::msg::LoopInfo inter_loop = loop_closures_candidates.front();
@@ -379,6 +383,8 @@ void distributedMapping::interLoopClosureThread(){
     if(!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_){
         return;
     }
+    RCLCPP_INFO(this->get_logger(), "+++++++++++++++++++++++++++++++++");
+	RCLCPP_INFO(this->get_logger(), "Running INTER_LOOP_CLOSURE_THREAD");
 
     // Set the loop rate based on the configured loop closure processing interval.
     rclcpp::Rate rate(1.0 / loop_closure_process_interval_);

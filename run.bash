@@ -29,6 +29,12 @@ gnome-terminal -- bash -c "
     exec bash
 "
 
+gnome-terminal -- bash -c "
+    export ROS_DOMAIN_ID=1; 
+    ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=/scout_1_1/cmd_vel;
+    exec bash
+"
+
 ## ==============================================================================
 ## Robot scout_2_2
 # Launch the Isaac Sim point cloud publisher in a new terminal
@@ -52,5 +58,11 @@ echo "Launching domain bridge for a to b"
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=2; 
     ros2 run domain_bridge domain_bridge '/home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/DomainBridge/b_to_a.yaml';
+    exec bash
+"
+
+gnome-terminal -- bash -c "
+    export ROS_DOMAIN_ID=2; 
+    ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=/scout_2_2/cmd_vel;
     exec bash
 "
