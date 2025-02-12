@@ -117,6 +117,11 @@ else()
   target_link_libraries(${PROJECT_NAME}_mapOptimization gtsam "${cpp_typesupport_target}" distributed_mapper_colcon::distributed_mapper distributed_mapping_lib ${LIBNABO_LIBRARIES})
 endif()
 
+# build loop visualization node
+add_executable(${PROJECT_NAME}_loopVisualizationNode src/distributed_mapping/loopVisualizationNode.cpp)
+ament_target_dependencies(${PROJECT_NAME}_loopVisualizationNode rclcpp sensor_msgs visualization_msgs pcl_conversions pcl_msgs PCL GTSAM)
+target_link_libraries(${PROJECT_NAME}_loopVisualizationNode gtsam "${cpp_typesupport_target}")
+
 install(
   DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}/
@@ -134,6 +139,7 @@ install(
     ${PROJECT_NAME}_imageProjection
     ${PROJECT_NAME}_imuPreintegration
     ${PROJECT_NAME}_mapOptimization
+    ${PROJECT_NAME}_loopVisualizationNode
   DESTINATION lib/${PROJECT_NAME}
 )
 

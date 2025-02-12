@@ -23,7 +23,7 @@ void distributedMapping::performInterLoopClosure(){
 	RCLCPP_INFO(this->get_logger(), "Performing inter loop closure function initiated!");
 
     // Step 1: Perform place recognition to find a candidate loop closure
-    RCLCPP_INFO(this->get_logger(), "[InterLoopClosure : performInterLoopClosure] -> find loop closure ID")
+    RCLCPP_INFO(this->get_logger(), "[InterLoopClosure : performInterLoopClosure] -> find loop closure ID");
     auto matching_result = keyframe_descriptor->detectInterLoopClosureID(inter_robot_loop_ptr);
     // Retrieve robot and keyframe indices for the detected loop closure
     int loop_robot0 = keyframe_descriptor->getIndex(inter_robot_loop_ptr).first;
