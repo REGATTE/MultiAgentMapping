@@ -1,0 +1,19 @@
+name: b_to_a
+from_domain: 2
+to_domain: 1
+topics:
+  /b/distributedMapping/globalDescriptors:
+    type: multi_agent_mapping/msg/GlobalDescriptor
+  /b/distributedMapping/loopInfo:
+    type: multi_agent_mapping/msg/LoopInfo
+  /b/distributedMapping/optimizationState:
+    type: std_msgs/msg/Int8
+  /b/distributedMapping/rotationEstimateState:
+    type: std_msgs/msg/Int8
+  /b/distributedMapping/poseEstimateState:
+    type: std_msgs/msg/Int8
+  /b/distributedMapping/neighborRotationEstimates:
+    type: multi_agent_mapping/msg/NeighborEstimate
+  /b/distributedMapping/neighborPoseEstimates:
+    type: multi_agent_mapping/msg/NeighborEstimate
+    
