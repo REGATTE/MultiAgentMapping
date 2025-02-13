@@ -3,18 +3,14 @@
 paramsServer::paramsServer() : Node("params_server_node"){
     // robot info
     std::string robot_namespace = this->get_namespace();
-    if(robot_namespace.length() < 1){
+    if(robot_namespace.length() != 2){
         RCLCPP_ERROR(this->get_logger(), "[paramsServer] -> Invalid robot namespace");
         rclcpp::shutdown();
     }
-    robot_name = robot_namespace.substr(1); // remove the "/"
-    // Ensure last character of the name is a digit
-    if(!std::isdigit(robot_namespace.back())){
-        RCLCPP_ERROR(this->get_logger(), "[subGraphsUtils] -> Invalid namespace format: last character is not a digit!");
-        rclcpp::shutdown();
-    }
+    robot_name = robot_namespace.substr(1, 1); // remove the "/"
+    
     // extract last char, convert to int and assign as robot_id
-    robot_id = robot_namespace.back() - '0';
+    robot_id = robot_name[0] - 'a';
 
     this->declare_parameter<int>("number_of_robots", 3); // declaring the param with default of 2
     this->get_parameter("number_of_robots", number_of_robots_); // Retrieve the parameter value
@@ -28,12 +24,12 @@ paramsServer::paramsServer() : Node("params_server_node"){
 
     // get frame names
     // Declare and retrieve the world_frame parameter
-    this->declare_parameter<std::string>("world_frame", "world"); // default -> world
-    this->get_parameter("world_frame", world_frame_);
+    this->declare_parameter<std::string>(robot_namespace + "world_frame", "world"); // default -> world
+    this->get_parameter(robot_namespace + "world_frame", world_frame_);
 
     // Declare and retrieve the odom_frame parameter
-    this->declare_parameter<std::string>("odom_frame", "odom"); // default -> odom
-    this->get_parameter("odom_frame", odom_frame_);
+    this->declare_parameter<std::string>(robot_namespace + "odom_frame", "odom"); // default -> odom
+    this->get_parameter(robot_namespace + "odom_frame", odom_frame_);
 
     // lidar config
     sensor_ = LiDARType::VELODYNE; // only using velodyne

@@ -9,7 +9,7 @@ set -e
 echo "Launching Isaac Sim Point Cloud Full Publisher for Scout_1_1 in a new terminal..."
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=1; 
-    ros2 launch isaac_sim_pointcloud_full_publisher full_pcd_pub.launch.py robot_namespace:=scout_1_1 config_file:=velodyne_vls_128.yaml; 
+    ros2 launch isaac_sim_pointcloud_full_publisher full_pcd_pub.launch.py robot_namespace:=a config_file:=velodyne_vls_128.yaml; 
     exec bash
 "
 
@@ -17,7 +17,7 @@ gnome-terminal -- bash -c "
 echo "Launching distributed mapping with the specified parameters for Scout_1_1 in a new terminal..."
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=1; 
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_1_1.yaml  namespace:=/scout_1_1 rviz_config:=scout_1_1.rviz;  
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_1_1.yaml  namespace:=/a rviz_config:=scout_1_1.rviz;  
     exec bash
 "
 
@@ -31,7 +31,7 @@ gnome-terminal -- bash -c "
 
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=1; 
-    ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=/scout_1_1/cmd_vel;
+    ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=/a/cmd_vel;
     exec bash
 "
 
@@ -41,7 +41,7 @@ gnome-terminal -- bash -c "
 echo "Launching Isaac Sim Point Cloud Full Publisher for Scout_2_2 in a new terminal..."
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=2; 
-    ros2 launch isaac_sim_pointcloud_full_publisher full_pcd_pub.launch.py robot_namespace:=scout_2_2 config_file:=velodyne_vls_128.yaml; 
+    ros2 launch isaac_sim_pointcloud_full_publisher full_pcd_pub.launch.py robot_namespace:=b config_file:=velodyne_vls_128.yaml; 
     exec bash
 "
 
@@ -49,7 +49,7 @@ gnome-terminal -- bash -c "
 echo "Launching distributed mapping with the specified parameters for Scout_2_2 in a new terminal..."
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=2; 
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_2_2.yaml  namespace:=/scout_2_2 rviz_config:=scout_2_2.rviz;  
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_2_2.yaml  namespace:=/b rviz_config:=scout_2_2.rviz;  
     exec bash
 "
 
@@ -63,6 +63,6 @@ gnome-terminal -- bash -c "
 
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=2; 
-    ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=/scout_2_2/cmd_vel;
+    ros2 run teleop_twist_keyboard teleop_twist_keyboard --ros-args --remap cmd_vel:=/b/cmd_vel;
     exec bash
 "

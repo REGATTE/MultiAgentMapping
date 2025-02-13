@@ -2,9 +2,9 @@
   ros__parameters:
 
     # Topics
-    pointCloudTopic: "/scout_2_2/scan3D_with_rings"                   # Point cloud data
-    imuTopic: "/scout_2_2/imu"                        # IMU data
-    odomTopic: "/scout_2_2/odom"                    # IMU pre-preintegration odometry, same frequency as IMU
+    pointCloudTopic: "/b/scan3D_with_rings"                   # Point cloud data
+    imuTopic: "/b/imu"                        # IMU data
+    odomTopic: "/b/odom"                    # IMU pre-preintegration odometry, same frequency as IMU
     gpsTopic: "odometry/gpsz"                    # GPS odometry topic from navsat, see module_navsat.launch file
 
     # Frames

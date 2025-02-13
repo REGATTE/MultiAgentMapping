@@ -10,12 +10,12 @@ distributedMapping::distributedMapping() : paramsServer(){
     RCLCPP_INFO(logger, "Distributed mapping class initialization. Log name: %s, Log directory: %s",  log_name.c_str(), log_dir.c_str());
 
     singleRobot robot;
-    for (int it=1; it<=number_of_robots_; it++){
+    for (int it=0; it<number_of_robots_; it++){
         // robot info
         robot.robot_id = it;
         robot.robot_name = "/a";
-        robot.robot_name[1] += (it - 1);
-        robot.odom_frame_ = odom_frame_;
+        robot.robot_name[1] += it ;
+        robot.odom_frame_ = robot.robot_name + "/" + odom_frame_;
 
         // this robot
         if (it == robot_id){
