@@ -8,15 +8,11 @@ cd ros2_ws/src
 git clone https://github.com/REGATTE/MultiAgentMapping.git --recursive
 ```
 
-### Install LIO-SAM
+### Install LIO-SAM Dependencies
 
-1. Clone the LIO-SAM repository, if not done from above recursive install :
-```bash
-cd ros2_ws/src
-git clone https://github.com/REGATTE/LIO-SAM_isaac_sim.git 
-```
+***LIO_SAM** code has been modified and added to the main package.*
 
-2. Install required dependencies:
+1. Install required dependencies:
 ```bash
 sudo apt install ros-<ros2-version>-perception-pcl \
    ros-<ros2-version>-pcl-msgs \
@@ -25,9 +21,9 @@ sudo apt install ros-<ros2-version>-perception-pcl \
 ```
 > Replace `<ros2-version>` with your ROS 2 distribution (e.g., `humble` or `foxy`).
 
-3. Ensure Eigen version 3.4.0 is installed.
+2. Ensure Eigen version 3.4.0 is installed.
 
-4. Install GTSAM:
+3. Install GTSAM:
 ```bash
 sudo add-apt-repository ppa:borglab/gtsam-release-4.2
 sudo apt install libgtsam-dev libgtsam-unstable-dev

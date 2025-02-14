@@ -150,7 +150,7 @@ class Explore(Node):
 
             if not self.front_obstacle and not self.left_obstacle and not self.right_obstacle:
                 # No obstacle, move forward
-                twist_msg.linear.x = 1.0
+                twist_msg.linear.x = 0.5
                 twist_msg.angular.z = 0.0
                 self.rotating = False
                 self.get_logger().info("No obstacles detected. Moving forward.")
