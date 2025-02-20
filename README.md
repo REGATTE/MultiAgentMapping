@@ -87,3 +87,10 @@ ros2 launch lio_sam run.launch.py params_file:=/path/to/Config/LIO_SAM/scout_1_1
 - Isaac Sim must be running and properly connected to ROS 2 for simulations to work correctly.
 
 ---
+## References
+
+- [LIO_SAM](https://github.com/TixiaoShan/LIO-SAM)
+- [DCL_SLAM](https://github.com/PengYu-Team/DCL-SLAM)
+- [LiDAR IRIS for LoopClosure](https://github.com/JoestarK/LiDAR-Iris)
+- [Distributed Mapper](https://github.com/CogRob/distributed-mapper)
+- [libnabo](https://github.com/norlab-ulaval/libnabo)
