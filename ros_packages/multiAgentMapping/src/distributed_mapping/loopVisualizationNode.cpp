@@ -20,7 +20,7 @@ class LoopVisualizationNode : public rclcpp::Node
 public:
     LoopVisualizationNode() : Node("loop_visualization_node")
     {
-        this->declare_parameter<int>("number_of_robots", 3);
+        this->declare_parameter<int>("number_of_robots", 2);
         number_of_robots_ = this->get_parameter("number_of_robots").as_int();
 
         pub_loop_closure_constraints_ = this->create_publisher<visualization_msgs::msg::MarkerArray>(

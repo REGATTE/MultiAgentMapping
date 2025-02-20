@@ -58,6 +58,8 @@ distributedMapping::distributedMapping() : paramsServer(){
                     [this, it](const multi_agent_mapping::msg::GlobalDescriptor::SharedPtr msg) {
                         this->globalDescriptorHandler(msg, it);
                     });
+                
+                RCLCPP_INFO(this->get_logger(), "[SUBSCRIBED] to: %s", (robot.robot_name + "/distributedMapping/globalDescriptors").c_str());
 
                 robot.sub_loop_info = this->create_subscription<multi_agent_mapping::msg::LoopInfo>(
                     robot.robot_name + "/distributedMapping/loopInfo",
@@ -65,6 +67,8 @@ distributedMapping::distributedMapping() : paramsServer(){
                     [this, it](const multi_agent_mapping::msg::LoopInfo::SharedPtr msg) {
                         this->loopInfoHandler(msg, it);
                     });
+                
+                RCLCPP_INFO(this->get_logger(), "[SUBSCRIBED] to: %s", (robot.robot_name + "/distributedMapping/loopInfo").c_str());
             }
 
             if (global_optimization_enable_) {
@@ -169,7 +173,7 @@ distributedMapping::distributedMapping() : paramsServer(){
             80, 360, 128, 0.4, 30, 2, 10, 4, 18, 1.6, 0.75, number_of_robots_, robot_id
         ));
         // rows, columns, n_scan, distance_threshold, exclude_Recent_frame_num, match_mode, 
-        // knn_candidate_num, nscale, min_wave_length, mult, sigma_on_f, number_of_robots, robot_f
+        // knn_candidate_num, nscale, min_wave_length, mult, sigma_on_f, number_of_robots, robot_id
     }
 
     loop_closures_candidates.clear();

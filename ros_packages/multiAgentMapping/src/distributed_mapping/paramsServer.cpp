@@ -12,7 +12,7 @@ paramsServer::paramsServer() : Node("params_server_node"){
     // extract last char, convert to int and assign as robot_id
     robot_id = robot_name[0] - 'a';
 
-    this->declare_parameter<int>("number_of_robots", 3); // declaring the param with default of 2
+    this->declare_parameter<int>("number_of_robots", 2); // declaring the param with default of 2
     this->get_parameter("number_of_robots", number_of_robots_); // Retrieve the parameter value
 
     if (number_of_robots_ < 1){
@@ -45,7 +45,7 @@ paramsServer::paramsServer() : Node("params_server_node"){
     // cpu params
     // Declare parameters with default values
     this->declare_parameter<int>(robot_namespace + "/onboard_cpu_cores_num", 4);  // Default: 4 cores
-    this->declare_parameter<float>(robot_namespace + "/loop_closure_process_interval", 0.02);  // Default: 0.02 second
+    this->declare_parameter<float>(robot_namespace + "/loop_closure_process_interval", 0.05);  // Default: 0.05 second
     this->declare_parameter<float>(robot_namespace + "/map_publish_interval", 10.0);  // Default: 10.0 seconds
     this->declare_parameter<float>(robot_namespace + "/mapping_process_interval", 0.1);  // Default: 0.1 seconds
 
@@ -55,19 +55,19 @@ paramsServer::paramsServer() : Node("params_server_node"){
     this->get_parameter(robot_namespace + "/map_publish_interval", map_publish_interval_);
     this->get_parameter(robot_namespace + "/mapping_process_interval", mapping_process_interval_);
 
-    this->declare_parameter<bool>(robot_namespace + "/global_optimization_enable", false);
+    this->declare_parameter<bool>(robot_namespace + "/global_optimization_enable", true);
     this->get_parameter(robot_namespace + "/global_optimization_enable", global_optimization_enable_);
 
-    this->declare_parameter<bool>(robot_namespace + "/use_pcm", false);
+    this->declare_parameter<bool>(robot_namespace + "/use_pcm", true);
     this->get_parameter(robot_namespace + "/use_pcm", use_pcm_);
 
-    this->declare_parameter<float>(robot_namespace + "/pcm_threshold", 0.75);
+    this->declare_parameter<float>(robot_namespace + "/pcm_threshold", 0.5);
     this->get_parameter(robot_namespace + "/pcm_threshold", pcm_threshold_);
 
-    this->declare_parameter<bool>(robot_namespace + "/use_between_noise", false);
+    this->declare_parameter<bool>(robot_namespace + "/use_between_noise", true);
     this->get_parameter(robot_namespace + "/use_between_noise", use_between_noise_);
 
-    this->declare_parameter<int>(robot_namespace + "/optimization_maximum_iteration", 100);
+    this->declare_parameter<int>(robot_namespace + "/optimization_maximum_iteration", 30);
     this->get_parameter(robot_namespace + "/optimization_maximum_iteration", optimization_maximum_iteration_);
 
     this->declare_parameter<float>(robot_namespace + "/failsafe_wait_time", 1.0);
@@ -98,6 +98,7 @@ paramsServer::paramsServer() : Node("params_server_node"){
     this->declare_parameter<float>(robot_namespace + "/descript_leaf_size", 0.1);
     this->get_parameter(robot_namespace + "/descript_leaf_size", descript_leaf_size_);
 
+    // enable to search loop-closure with global descriptor
     this->declare_parameter<bool>(robot_namespace + "/intra_robot_loop_closure_enable", true);
     this->get_parameter(robot_namespace + "/intra_robot_loop_closure_enable", intra_robot_loop_closure_enable_);
 
@@ -108,17 +109,17 @@ paramsServer::paramsServer() : Node("params_server_node"){
     RCLCPP_INFO(this->get_logger(), "Descriptor type set to LidarIris.");
 
     this->declare_parameter<int>(robot_namespace + "/knn_candidates", 10);
-    this->declare_parameter<int>(robot_namespace + "/exclude_recent_frame_num", 30);
-    this->declare_parameter<float>(robot_namespace + "/search_radius", 15.0);
+    this->declare_parameter<int>(robot_namespace + "/exclude_recent_frame_num", 50);
+    this->declare_parameter<float>(robot_namespace + "/search_radius", 30.0);
     this->declare_parameter<int>(robot_namespace + "/match_mode", 2);
     this->declare_parameter<int>(robot_namespace + "/iris_row", 80);
     this->declare_parameter<int>(robot_namespace + "/iris_column", 360);
     this->declare_parameter<float>(robot_namespace + "/descriptor_distance_threshold", 0.4);
     this->declare_parameter<int>(robot_namespace + "/history_keyframe_search_num", 16);
     this->declare_parameter<float>(robot_namespace + "/fitness_score_threshold", 0.2);
-    this->declare_parameter<int>(robot_namespace + "/ransac_maximum_iteration", 1000);
-    this->declare_parameter<float>(robot_namespace + "/ransac_threshold", 0.5);
-    this->declare_parameter<float>(robot_namespace + "/ransac_outlier_reject_threshold", 0.05);
+    this->declare_parameter<int>(robot_namespace + "/ransac_maximum_iteration", 2000);
+    this->declare_parameter<float>(robot_namespace + "/ransac_threshold", 0.3);
+    this->declare_parameter<float>(robot_namespace + "/ransac_outlier_reject_threshold", 0.35);
     this->get_parameter(robot_namespace + "/knn_candidates", knn_candidates_);
     this->get_parameter(robot_namespace + "/exclude_recent_frame_num", exclude_recent_frame_num_);
     this->get_parameter(robot_namespace + "/search_radius", search_radius_);
