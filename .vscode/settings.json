@@ -88,6 +88,7 @@
         "typeinfo": "cpp",
         "__nullptr": "cpp",
         "filesystem": "cpp",
-        "locale": "cpp"
+        "locale": "cpp",
+        "ios": "cpp"
     }
 }

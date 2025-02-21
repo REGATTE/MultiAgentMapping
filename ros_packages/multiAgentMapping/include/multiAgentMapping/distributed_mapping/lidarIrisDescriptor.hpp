@@ -30,6 +30,10 @@ class lidar_iris_descriptor : public scan_descriptor {
         ~lidar_iris_descriptor();
     
     private:
+
+		std::vector<float> extractUniqueElevationAngles(const pcl::PointCloud<pcl::PointXYZI>& cloud);
+		int findClosestElevationLayer(float elevation, const std::vector<float>& elevation_layers);
+		
         std::pair<Eigen::VectorXf, cv::Mat1b> getIris(
 			const pcl::PointCloud<pcl::PointXYZI> &cloud);
         

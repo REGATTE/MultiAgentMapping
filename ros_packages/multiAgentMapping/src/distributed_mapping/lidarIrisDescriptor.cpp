@@ -45,48 +45,85 @@ lidar_iris_descriptor::lidar_iris_descriptor (
 
 lidar_iris_descriptor::~lidar_iris_descriptor(){}
 
-std::pair<Eigen::VectorXf, cv::Mat1b> lidar_iris_descriptor::getIris(
-    const pcl::PointCloud<pcl::PointXYZI> &cloud
-){
+// Function to extract unique elevation angles from the LiDAR point cloud
+std::vector<float> lidar_iris_descriptor::extractUniqueElevationAngles(const pcl::PointCloud<pcl::PointXYZI>& cloud) {
+    std::set<float> unique_angles;
+    for (const auto& point : cloud) {
+        float elevation = atan2(point.z, sqrt(point.x * point.x + point.y * point.y)) * 180.0 / M_PI;
+        unique_angles.insert(elevation);
+    }
+    
+    // Convert set to vector and sort it in descending order
+    std::vector<float> sorted_angles(unique_angles.begin(), unique_angles.end());
+    std::sort(sorted_angles.begin(), sorted_angles.end(), std::greater<float>());
+    
+    return sorted_angles;
+}
+
+// Function to find the closest elevation layer index from dynamically extracted angles
+int lidar_iris_descriptor::findClosestElevationLayer(float elevation, const std::vector<float>& elevation_layers) {
+    float min_diff = std::abs(elevation_layers[0] - elevation);
+    int closest_index = 0;
+
+    for (size_t i = 1; i < elevation_layers.size(); i++) {
+        float diff = std::abs(elevation_layers[i] - elevation);
+        if (diff < min_diff) {
+            min_diff = diff;
+            closest_index = i;
+        }
+    }
+    return closest_index;
+
+}std::pair<Eigen::VectorXf, cv::Mat1b> lidar_iris_descriptor::getIris(
+    const pcl::PointCloud<pcl::PointXYZI>& cloud
+) {
     cv::Mat1b iris_image = cv::Mat1b::zeros(rows_, columns_);
     Eigen::MatrixXf iris_row_key_matrix = Eigen::MatrixXf::Zero(rows_, columns_);
-    // VLS 128 lidar logic
-    if(n_scan_ == 128){ 
-        for(auto p : cloud.points){
-            // compute XY-plane distance
-            float dis = sqrt(p.data[0] * p.data[0] + p.data[1] * p.data[1]);
+    Eigen::VectorXi row_counts = Eigen::VectorXi::Zero(rows_);
 
-            // vertical angle remapping: [-25 to +15] -> [0, 40]
-            float arc = (atan2(p.data[2], dis) * 180.0f / M_PI) + 25;
-
-            // horizontal angle remapping [-180, +180] -> [0, 360]
-            float yaw = (atan2(p.data[1], p.data[0]) * 180.0f / M_PI) + 180;
-
-            // discrtize into bins
-            int Q_dis = std::min(std::max((int)floor(dis), 0), (rows_ - 1));
-            int Q_arc = std::min(std::max((int)floor(arc / 5.0f), 0), 7);  // 8 bins, 5° each
-            int Q_yaw = std::min(std::max((int)floor(yaw + 0.5), 0), (columns_ - 1));
-
-            // update iris image with bit-wise encoding
-            iris_image.at<uint8_t>(Q_dis, Q_yaw) |= (1 << Q_arc);
-
-            // Update the row key matrix to store the maximum height (z-value)
-            if(iris_row_key_matrix(Q_dis, Q_yaw) < p.data[2]){
-                iris_row_key_matrix(Q_dis, Q_yaw) = p.data[2];
-            }
-        }
-    } else {
-        std::cout << "[LiDAR Iris Descriptor] Error : Only n_scan = 128 supported" << std::endl;
+    if (cloud.empty()) {
+        std::cerr << "[ERROR] Input LiDAR cloud is empty!" << std::endl;
+        return std::make_pair(Eigen::VectorXf::Zero(rows_), iris_image);
     }
 
-    // extract rowkey
+    std::vector<float> elevation_layers = extractUniqueElevationAngles(cloud);
+
+    for (const auto& point : cloud) {
+        float azimuth = atan2(point.y, point.x) * 180.0 / M_PI;
+        float elevation = atan2(point.z, sqrt(point.x * point.x + point.y * point.y)) * 180.0 / M_PI;
+
+        int row = findClosestElevationLayer(elevation, elevation_layers);
+        int col = floor((azimuth + 180.0) / (360.0 / columns_));
+
+        if (row < 0 || row >= rows_ || col < 0 || col >= columns_) continue;
+
+        iris_row_key_matrix(row, col) += point.intensity;
+        row_counts(row) += 1;
+    }
+
     Eigen::VectorXf rowkey = Eigen::VectorXf::Zero(rows_);
-    for (int i = 0; i < iris_row_key_matrix.rows(); i++){
-        Eigen::VectorXf curr_row = iris_row_key_matrix.row(i);
-        rowkey(i) = curr_row.mean();
+    for (int i = 0; i < rows_; i++) {
+        if (row_counts(i) > 0) {
+            rowkey(i) = iris_row_key_matrix.row(i).sum() / row_counts(i);
+        }
     }
 
-    return std::make_pair(rowkey, iris_image);
+    // Debugging step before assigning
+    std::cout << "[DEBUG] Rowkey before assigning to descriptor:\n";
+    for (int i = 0; i < std::min(10, rows_); i++) {
+        std::cout << "Row " << i << ": " << rowkey(i) << std::endl;
+    }
+
+    // Assign rowkey to descriptor
+    Eigen::VectorXf descriptor = rowkey;  // Ensure assignment happens
+
+    // Debug after assignment
+    std::cout << "[DEBUG] Final Descriptor Values (First 10):\n";
+    for (int i = 0; i < std::min(10, rows_); i++) {
+        std::cout << "Row " << i << ": " << descriptor(i) << std::endl;
+    }
+
+    return std::make_pair(descriptor, iris_image);
 }
 
 inline cv::Mat lidar_iris_descriptor::circularRowShift(
