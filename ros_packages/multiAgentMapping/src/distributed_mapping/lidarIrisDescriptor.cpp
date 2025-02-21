@@ -1020,6 +1020,7 @@ std::vector<float> lidar_iris_descriptor::makeAndSaveDescriptorAndKey(
 std::pair<int, float> lidar_iris_descriptor::detectIntraLoopClosureID(
 	const int cur_ptr)
 {
+    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), "Detecting intra-loop-closure id using descriptor data");
 	std::pair<int, float> result {-1, 0.0};
 	Eigen::VectorXf iris_rowkey = iris_rowkeys[id_][cur_ptr]; // current query rowkey
 	lidar_iris_descriptor::featureDesc iris_feature = iris_features[id_][cur_ptr]; // current feature
@@ -1084,14 +1085,14 @@ std::pair<int, float> lidar_iris_descriptor::detectIntraLoopClosureID(
 	{
 		result.first = min_index;
 		result.second = min_bias;
-		std::cout << "\033[1;33m[Iris Intra Loop<" << id_ << ">] btn " << cur_ptr 
-          << " and " << min_index << ". Dis: " << std::fixed << std::setprecision(2) 
+		std::cout << "\033[1;33m[Iris Intra Loop<robot id: " << id_ << ">] between pose: " << cur_ptr 
+          << " and pose :" << min_index << ". Dis: " << std::fixed << std::setprecision(2) 
           << min_distance << ".\033[0m" << std::endl;
 	}
 	else
 	{
-		std::cout << "\033[1;33m[Iris Intra Not loop<" << id_ << ">] btn " << cur_ptr 
-          << " and " << min_index << ". Dis: " << std::fixed << std::setprecision(2) 
+		std::cout << "\033[1;33m[Iris Intra Not loop<robot id: " << id_ << ">] between pose:" << cur_ptr 
+          << " and pose:" << min_index << ". Dis: " << std::fixed << std::setprecision(2) 
           << min_distance << ".\033[0m" << std::endl;
 	}
 	return result;
