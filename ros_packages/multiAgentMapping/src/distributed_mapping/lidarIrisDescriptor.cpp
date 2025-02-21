@@ -74,7 +74,9 @@ int lidar_iris_descriptor::findClosestElevationLayer(float elevation, const std:
     }
     return closest_index;
 
-}std::pair<Eigen::VectorXf, cv::Mat1b> lidar_iris_descriptor::getIris(
+}
+
+std::pair<Eigen::VectorXf, cv::Mat1b> lidar_iris_descriptor::getIris(
     const pcl::PointCloud<pcl::PointXYZI>& cloud
 ) {
     cv::Mat1b iris_image = cv::Mat1b::zeros(rows_, columns_);
@@ -813,28 +815,88 @@ void lidar_iris_descriptor::save(
 }
 
 std::vector<float> lidar_iris_descriptor::makeAndSaveDescriptorAndKey(
-	const pcl::PointCloud<pcl::PointXYZI>& scan,
-	const int8_t robot,
-	const int index)
-{
-	auto scan_iris_image = getIris(scan);
-	save(scan_iris_image.second, scan_iris_image.first, robot, index);
+    const pcl::PointCloud<pcl::PointXYZI>& cloud,
+    const int8_t robot_id,
+    const int index
+) {
+    std::cout << "[DEBUG] Starting makeAndSaveDescriptorAndKey for robot " << static_cast<int>(robot_id) << ", index " << index << std::endl;
 
-	std::vector<float> descriptor_msg_data;
-	for(int row_idx = 0; row_idx < scan_iris_image.second.rows; row_idx++)
-	{
-		for(int col_idx = 0; col_idx < scan_iris_image.second.cols; col_idx++)
-		{
-			descriptor_msg_data.push_back(scan_iris_image.second(row_idx, col_idx));
-		}
-	}
+    // Get iris descriptor and image
+    auto iris_result = getIris(cloud);
+    Eigen::VectorXf descriptor = iris_result.first;
+    cv::Mat1b iris_image = iris_result.second;
 
-	for(int row_idx = 0; row_idx < scan_iris_image.second.rows; row_idx++)
-	{
-		descriptor_msg_data.push_back(scan_iris_image.first(row_idx));
-	}
-	
-	return descriptor_msg_data;
+    // Debug output after getIris
+    std::cout << "[DEBUG] After getIris:\n";
+    std::cout << "  - Descriptor size: " << descriptor.size() << std::endl;
+    std::cout << "  - Descriptor norm: " << descriptor.norm() << std::endl;
+    std::cout << "  - First 5 descriptor values:";
+    for (int i = 0; i < std::min(5, (int)descriptor.size()); i++) {
+        std::cout << " " << descriptor(i);
+    }
+    std::cout << std::endl;
+
+    // Save descriptor and image
+    std::cout << "[DEBUG] Before save() call" << std::endl;
+    save(iris_image, descriptor, robot_id, index);
+    std::cout << "[DEBUG] After save() call" << std::endl;
+
+    // Prepare message data
+    std::vector<float> msg_data;
+    msg_data.reserve(rows_ * columns_ + rows_);  // Pre-allocate space
+
+    std::cout << "[DEBUG] Populating message data:\n";
+    std::cout << "  - Initial vector capacity: " << msg_data.capacity() << std::endl;
+
+    // First: Add iris image data
+    for(int row_idx = 0; row_idx < iris_image.rows; row_idx++) {
+        for(int col_idx = 0; col_idx < iris_image.cols; col_idx++) {
+            msg_data.push_back(static_cast<float>(iris_image.at<uint8_t>(row_idx, col_idx)));
+        }
+    }
+    std::cout << "  - After adding iris image data. Size: " << msg_data.size() << std::endl;
+    std::cout << "  - First 5 iris values:";
+    for (int i = 0; i < std::min(5, (int)msg_data.size()); i++) {
+        std::cout << " " << msg_data[i];
+    }
+    std::cout << std::endl;
+
+    // Second: Add descriptor values
+    for(int i = 0; i < descriptor.size(); i++) {
+        msg_data.push_back(descriptor(i));
+    }
+    std::cout << "  - After adding descriptor data. Size: " << msg_data.size() << std::endl;
+    std::cout << "  - First 5 descriptor values in message:";
+    for (int i = rows_ * columns_; i < std::min(rows_ * columns_ + 5, (int)msg_data.size()); i++) {
+        std::cout << " " << msg_data[i];
+    }
+    std::cout << std::endl;
+
+    // Final verification
+    std::cout << "[DEBUG] Final message verification:\n";
+    std::cout << "  - Total size: " << msg_data.size() << std::endl;
+    std::cout << "  - Expected size: " << (rows_ * columns_ + rows_) << std::endl;
+    std::cout << "  - Last 5 values:";
+    for (int i = std::max(0, (int)msg_data.size() - 5); i < msg_data.size(); i++) {
+        std::cout << " " << msg_data[i];
+    }
+    std::cout << std::endl;
+
+    // Verify stored data
+    std::cout << "[DEBUG] Verifying stored data:\n";
+    std::cout << "  - iris_rowkeys[" << robot_id << "][" << index << "] exists: " 
+              << (iris_rowkeys[robot_id].find(index) != iris_rowkeys[robot_id].end()) << std::endl;
+    if (iris_rowkeys[robot_id].find(index) != iris_rowkeys[robot_id].end()) {
+        auto& stored_rowkey = iris_rowkeys[robot_id][index];
+        std::cout << "  - Stored rowkey size: " << stored_rowkey.size() << std::endl;
+        std::cout << "  - First 5 stored rowkey values:";
+        for (int i = 0; i < std::min(5, (int)stored_rowkey.size()); i++) {
+            std::cout << " " << stored_rowkey(i);
+        }
+        std::cout << std::endl;
+    }
+
+    return msg_data;
 }
 
 std::pair<int, float> lidar_iris_descriptor::detectIntraLoopClosureID(
