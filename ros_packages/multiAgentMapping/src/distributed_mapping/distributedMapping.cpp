@@ -625,7 +625,23 @@ bool distributedMapping::updatePoses(){
     isam2_keypose_estimate = pclPointTogtsamPose3(keyposes_cloud_6d->back());
     return return_value;
 }
+
+/**
+ * @brief Processes and generates IRIS descriptors for LiDAR keyframes
+ * 
+ * This function handles two main tasks:
+ * 1. Processes stored descriptors from other robots in the queue
+ * 2. Generates and publishes new descriptors for the current robot's keyframe
+ * 
+ * The function will:
+ * - Process any pending descriptors from other robots
+ * - Generate a new descriptor for the current keyframe if loop closure is enabled
+ * - Downsample the current keyframe cloud
+ * - Create and verify the descriptor message
+ * - Publish the descriptor for other robots to use
+ */
 void distributedMapping::makeIrisDescriptor() {
+	// Process stored descriptors from other robots
     while(!store_descriptors.empty()){
         auto msg_data = store_descriptors.front().second;
         auto msg_id = store_descriptors.front().first;
@@ -633,53 +649,85 @@ void distributedMapping::makeIrisDescriptor() {
         keyframe_descriptor->saveDescriptorAndKey(msg_data.values.data(), msg_id, msg_data.index);
         RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> Saving Iris Descriptors from Robot ID: [%d].", msg_id);
     }
-    
+
+    // Skip if no initial values or loop closure is disabled
     if(initial_values->empty() || (!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_)){
         return;
     }
 
-    // downsample keyframe
+    // Downsample keyframe for descriptor generation
     cloud_for_descript_ds->clear();
     downsample_filter_for_descriptor.setInputCloud(robots[robot_id].keyframe_cloud);
     downsample_filter_for_descriptor.filter(*cloud_for_descript_ds);
 
     RCLCPP_INFO(this->get_logger(), "[DEBUG] Filtered LiDAR PointCloud Size: %lu", cloud_for_descript_ds->size());
 
-    // Generate descriptor
+    // Generate descriptor and prepare message
     auto descriptor_vec = keyframe_descriptor->makeAndSaveDescriptorAndKey(*cloud_for_descript_ds, robot_id, initial_values->size()-1);
-    RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> Finished makeIrisDescriptors[%d].", robot_id);
 
-    // Clear and assign the full descriptor vector (iris image first, then descriptor)
+    // Prepare message vector with proper capacity
     global_descriptor_msg.values.clear();
-    global_descriptor_msg.values = descriptor_vec;
+    global_descriptor_msg.values.reserve(descriptor_vec.size());
+    
+    // Copy values explicitly to ensure data integrity
+    for(size_t i = 0; i < descriptor_vec.size(); i++) {
+        global_descriptor_msg.values.push_back(descriptor_vec[i]);
+    }
 
-    // Debug output
-    RCLCPP_INFO(this->get_logger(), "[DEBUG] Message values after assignment:");
-    RCLCPP_INFO(this->get_logger(), "  Size: %zu", global_descriptor_msg.values.size());
-    if (!global_descriptor_msg.values.empty()) {
-        RCLCPP_INFO(this->get_logger(), "  First 5 values (iris image):");
-        for (size_t i = 0; i < std::min(global_descriptor_msg.values.size(), size_t(5)); i++) {
-            RCLCPP_INFO(this->get_logger(), "  Value[%d]: %.6f", (int)i, global_descriptor_msg.values[i]);
-        }
-        
-        size_t descriptor_start = global_descriptor_msg.values.size() - 80;  // 80 is descriptor size
-        RCLCPP_INFO(this->get_logger(), "  First 5 values of descriptor part:");
-        for (size_t i = descriptor_start; i < std::min(descriptor_start + 5, global_descriptor_msg.values.size()); i++) {
-            RCLCPP_INFO(this->get_logger(), "  Value[%d]: %.6f", (int)i, global_descriptor_msg.values[i]);
+    // Verify data transfer and log details
+    std::stringstream ss;
+    ss << "Message data verification:\n";
+    ss << "  Original vector size: " << descriptor_vec.size() << "\n";
+    ss << "  Message vector size: " << global_descriptor_msg.values.size() << "\n";
+    
+    // Assuming the first 28800 values (80x360) are iris image data
+    const size_t iris_size = 28800;  // 80x360
+    
+    // Verify iris image part
+    ss << "  First 5 non-zero iris values:";
+    int count = 0;
+    for(size_t i = 0; i < iris_size && count < 5; i++) {
+        if(global_descriptor_msg.values[i] > 0) {
+            ss << " " << global_descriptor_msg.values[i];
+            count++;
         }
     }
+    
+    // Verify descriptor part
+    ss << "\n  First 5 descriptor values:";
+    for(size_t i = 0; i < 5; i++) {
+        ss << " " << global_descriptor_msg.values[iris_size + i];
+    }
+    
+    // Compare with original data
+    ss << "\n  Original first 5 descriptor values:";
+    for(size_t i = iris_size; i < iris_size + 5; i++) {
+        ss << " " << descriptor_vec[i];
+    }
+    
+    RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
 
     // keyfame index
     global_descriptor_msg.index = initial_values->size()-1;
     global_descriptor_msg.header.stamp = robots[robot_id].time_cloud_input_stamp;
     
-    // Debug before publishing
-    RCLCPP_INFO(this->get_logger(), "[DEBUG] Publishing message with %zu values", global_descriptor_msg.values.size());
+    // Final verification before publishing
+    RCLCPP_INFO(this->get_logger(), 
+        "Final message verification:\n"
+        "  Total size: %zu\n"
+        "  Non-zero iris values: %zu\n"
+        "  First descriptor value: %.6f",
+        global_descriptor_msg.values.size(),
+        std::count_if(global_descriptor_msg.values.begin(), 
+                     global_descriptor_msg.values.begin() + iris_size,
+                     [](float f) { return f > 0.0f; }),
+        global_descriptor_msg.values[iris_size]);
     
     // publish message
     robots[robot_id].pub_descriptors->publish(global_descriptor_msg);
+    
+    RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> Finished makeIrisDescriptors[%d].", robot_id);
 }
-
 void distributedMapping::publishPath(){
 	// publish global path
 	if(pub_global_path->get_subscription_count()!=0){
