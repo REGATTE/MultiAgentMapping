@@ -23,48 +23,73 @@ distributedMapping::distributedMapping() : paramsServer(){
             if(intra_robot_loop_closure_enable_ || inter_robot_loop_closure_enable_){
                 // publish global descriptors
                 robot.pub_descriptors = this->create_publisher<multi_agent_mapping::msg::GlobalDescriptor>(
-                    robot.robot_name + "/distributedMapping/globalDescriptors", 5
+                    robot.robot_name + "/distributedMapping/globalDescriptors", 
+                    rclcpp::QoS(5).reliable()
                 );
                 RCLCPP_INFO(this->get_logger(), "Publishing to: %s", (robot.robot_name + "/distributedMapping/globalDescriptors").c_str());
                 // publish Loop Info
                 robot.pub_loop_info = this->create_publisher<multi_agent_mapping::msg::LoopInfo>(
-                    robot.robot_name + "/distributedMapping/loopInfo", 5
+                    robot.robot_name + "/distributedMapping/loopInfo", 
+                    rclcpp::QoS(5).reliable()
                 );
                 RCLCPP_INFO(this->get_logger(), "Publishing to: %s", (robot.robot_name + "/distributedMapping/loopInfo").c_str());
             }
             if(global_optimization_enable_){
                 // publish optimization state
                 robot.pub_optimization_state = this->create_publisher<std_msgs::msg::Int8>(
-                    robot.robot_name + "/distributedMapping/optimizationState", 50
+                    robot.robot_name + "/distributedMapping/optimizationState", 
+                    rclcpp::QoS(50).reliable()
                 );
                 robot.pub_rotation_estimate_state = this->create_publisher<std_msgs::msg::Int8>(
-                    robot.robot_name + "/distributedMapping/rotationEstimateState", 50
+                    robot.robot_name + "/distributedMapping/rotationEstimateState", 
+                    rclcpp::QoS(50).reliable()
                 );
                 robot.pub_pose_estimate_state = this->create_publisher<std_msgs::msg::Int8>(
-                    robot.robot_name + "/distributedMapping/poseEstimateState", 50
+                    robot.robot_name + "/distributedMapping/poseEstimateState", 
+                    rclcpp::QoS(50).reliable()
                 );
                 robot.pub_neighbor_rotation_estimates = this->create_publisher<multi_agent_mapping::msg::NeighborEstimate>(
-                    robot.robot_name + "/distributedMapping/neighborRotationEstimates", 50
+                    robot.robot_name + "/distributedMapping/neighborRotationEstimates", 
+                    rclcpp::QoS(50).reliable()
                 );
                 robot.pub_neighbor_pose_estimates = this->create_publisher<multi_agent_mapping::msg::NeighborEstimate>(
-                    robot.robot_name + "/distributedMapping/neighborPoseEstimates", 50
+                    robot.robot_name + "/distributedMapping/neighborPoseEstimates", 
+                    rclcpp::QoS(50).reliable()
                 );
             }
         } else {
             if (intra_robot_loop_closure_enable_ || inter_robot_loop_closure_enable_) {
+                // Global Descriptor subscription
                 robot.sub_descriptors = this->create_subscription<multi_agent_mapping::msg::GlobalDescriptor>(
                     robot.robot_name + "/distributedMapping/globalDescriptors",
                     rclcpp::QoS(50).reliable(),
                     [this, it](const multi_agent_mapping::msg::GlobalDescriptor::SharedPtr msg) {
+                        RCLCPP_INFO(this->get_logger(), 
+                            "[CALLBACK TRIGGERED] Received global descriptor from robot %d on topic: %s | Index: %d | Timestamp: %d.%d",
+                            it, 
+                            (robots[it].robot_name + "/distributedMapping/globalDescriptors").c_str(),
+                            msg->index,
+                            msg->header.stamp.sec,
+                            msg->header.stamp.nanosec);
                         this->globalDescriptorHandler(msg, it);
                     });
                 
                 RCLCPP_INFO(this->get_logger(), "[SUBSCRIBED] to: %s", (robot.robot_name + "/distributedMapping/globalDescriptors").c_str());
 
+                
+                // Loop Info subscription
                 robot.sub_loop_info = this->create_subscription<multi_agent_mapping::msg::LoopInfo>(
                     robot.robot_name + "/distributedMapping/loopInfo",
                     rclcpp::QoS(50).reliable(),
                     [this, it](const multi_agent_mapping::msg::LoopInfo::SharedPtr msg) {
+                        RCLCPP_INFO(this->get_logger(), 
+                            "[CALLBACK TRIGGERED] Received loop info from robot %d on topic: %s | Robot0: %d | Index0: %d | Robot1: %d | Index1: %d",
+                            it, 
+                            (robots[it].robot_name + "/distributedMapping/loopInfo").c_str(),
+                            msg->robot0,
+                            msg->index0,
+                            msg->robot1,
+                            msg->index1);
                         this->loopInfoHandler(msg, it);
                     });
                 
