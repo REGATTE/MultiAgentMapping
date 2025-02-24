@@ -1109,36 +1109,51 @@ public:
     }
 };
 
-
 int main(int argc, char** argv)
 {   
+    // Initialize ROS 2
     rclcpp::init(argc, argv);
 
+    // Node options for intra-process communication
     rclcpp::NodeOptions options;
     options.use_intra_process_comms(true);
-    rclcpp::executors::SingleThreadedExecutor exec;
 
+    // Create the main map optimization node
     auto MO = std::make_shared<mapOptimization>(options);
+
+    // Use SingleThreadedExecutor (since MultiThreadedExecutor caused failures)
+    rclcpp::executors::SingleThreadedExecutor exec;
     exec.add_node(MO);
 
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "\033[1;32m----> Map Optimization Started.\033[0m");
 
-    // std::thread loopthread(&mapOptimization::loopClosureThread, MO);
-    // std::thread visualizeMapThread(&mapOptimization::visualizeGlobalMapThread, MO);
+    // Start distributed mapping loop closure threads
+    // std::thread intraLoopThread(&distributedMapping::intraLoopClosureThread, &(MO->dist_mapping));
+    // std::thread interLoopThread(&distributedMapping::interLoopClosureThread, &(MO->dist_mapping));
+    std::thread loopThread(&distributedMapping::loopClosureThread, &(MO->dist_mapping));
 
-    // Loop Closure threads
-    std::thread intraLoopThread(&distributedMapping::intraLoopClosureThread, &(MO->dist_mapping));
-    std::thread interLoopThread(&distributedMapping::interLoopClosureThread, &(MO->dist_mapping));
-    // distributed mapping viz thread
+    // Start distributed mapping visualization thread
     std::thread visualize_map_thread(&distributedMapping::globalMapThread, &(MO->dist_mapping));
 
+    // Log before spinning
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Starting ROS 2 spin loop...");
+
+    // Spin in the main thread
     exec.spin();
 
+    // Log when exiting spin loop
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Exited exec.spin(), shutting down...");
+
+    // Shutdown ROS 2
     rclcpp::shutdown();
 
-    intraLoopThread.join();
-    interLoopThread.join();
+    // Ensure the additional threads are properly joined before exiting
+    // intraLoopThread.join();
+    // interLoopThread.join();
+    loopThread.join();
     visualize_map_thread.join();
+
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "All threads joined. Exiting program.");
 
     return 0;
 }

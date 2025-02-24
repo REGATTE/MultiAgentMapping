@@ -291,3 +291,31 @@ int distributedMapping::detectLoopClosureDistance(
     // Return the index of the detected loop closure keyframe.
     return loop_key1;
 }
+
+void distributedMapping::loopClosureThread(){
+    // Terminate the thread if neither intra-robot nor inter-robot loop closures are enabled.
+    if(!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_){
+        return;
+    }
+    RCLCPP_INFO(this->get_logger(), "+++++++++++++++++++++++++++++++++");
+	RCLCPP_INFO(this->get_logger(), "Running LOOP_CLOSURE_THREAD");
+
+    // Set the loop rate based on the configured loop closure processing interval.
+    rclcpp::Rate rate(1.0 / loop_closure_process_interval_);
+
+    // Main loop for detecting inter-robot loop closures.
+    while(rclcpp::ok()){
+        rate.sleep();  // Sleep to maintain the desired loop rate.
+
+        // Find intra-loop closures by searching for nearby keyframes within a specified radius.
+        performRadiusSearchIntraLoopClosure();
+
+		performDescriptorBasedIntraLoopClosure();
+
+        // Find inter-loop closures 
+        performInterLoopClosure();
+
+        // Validate the inter-robot-loop closure
+        performExternLoopClosure();
+    }
+}

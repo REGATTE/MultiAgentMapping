@@ -66,6 +66,7 @@ class distributedMapping : public paramsServer{
 		void publishPath();
 		void publishTransformation(
 			const rclcpp::Time& timestamp);
+		void loopClosureThread();
 		void intraLoopClosureThread();
 		void interLoopClosureThread();
 		void globalMapThread();

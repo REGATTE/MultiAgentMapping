@@ -32,7 +32,7 @@ def generate_launch_description():
         executable='multi_agent_mapping_loopVisualizationNode',
         name='distmapping_loopVisualizationNode',
         output='screen',
-        parameters=[{'number_of_robots': 3}]
+        parameters=[{'number_of_robots': 2}]
     )
 
     # Launch Scout 1
