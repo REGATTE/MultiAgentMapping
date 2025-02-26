@@ -6,48 +6,48 @@ topics:
     type: multi_agent_mapping/msg/GlobalDescriptor
     qos:
       reliability: reliable
-      durability: volatile
+      durability: transient_local
       history: keep_last
-      depth: 5
+      depth: 50
   /b/distributedMapping/loopInfo:
     type: multi_agent_mapping/msg/LoopInfo
     qos:
       reliability: reliable
-      durability: volatile
+      durability: transient_local
       history: keep_last
-      depth: 5
+      depth: 50
   /b/distributedMapping/optimizationState:
     type: std_msgs/msg/Int8
     qos:
       reliability: reliable
-      durability: volatile
+      durability: transient_local
       history: keep_last
       depth: 50
   /b/distributedMapping/rotationEstimateState:
     type: std_msgs/msg/Int8
     qos:
       reliability: reliable
-      durability: volatile
+      durability: transient_local
       history: keep_last
       depth: 50
   /b/distributedMapping/poseEstimateState:
     type: std_msgs/msg/Int8
     qos:
       reliability: reliable
-      durability: volatile
+      durability: transient_local
       history: keep_last
       depth: 50
   /b/distributedMapping/neighborRotationEstimates:
     type: multi_agent_mapping/msg/NeighborEstimate
     qos:
       reliability: reliable
-      durability: volatile
+      durability: transient_local
       history: keep_last
       depth: 50
   /b/distributedMapping/neighborPoseEstimates:
     type: multi_agent_mapping/msg/NeighborEstimate
     qos:
       reliability: reliable
-      durability: volatile
+      durability: transient_local
       history: keep_last
       depth: 50

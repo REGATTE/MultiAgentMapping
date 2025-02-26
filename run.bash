@@ -13,19 +13,19 @@ gnome-terminal -- bash -c "
     exec bash
 "
 
-# Launch the distributed mapping node in another new terminal
-echo "Launching distributed mapping with the specified parameters for Scout_1_1 in a new terminal..."
-gnome-terminal -- bash -c "
-    export ROS_DOMAIN_ID=1; 
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_1_1.yaml  namespace:=/a rviz_config:=scout_1_1.rviz;  
-    exec bash
-"
-
 # Launch the LIO-SAM node in another new terminal
 echo "Launching domain bridge for a to b"
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=1; 
     ros2 run domain_bridge domain_bridge /home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/DomainBridge/a_to_b.yaml;
+    exec bash
+"
+
+# Launch the distributed mapping node in another new terminal
+echo "Launching distributed mapping with the specified parameters for Scout_1_1 in a new terminal..."
+gnome-terminal -- bash -c "
+    export ROS_DOMAIN_ID=1; 
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_1_1.yaml  namespace:=/a rviz_config:=scout_1_1.rviz;  
     exec bash
 "
 
@@ -45,19 +45,19 @@ gnome-terminal -- bash -c "
     exec bash
 "
 
-# Launch the distributed mapping node in another new terminal
-echo "Launching distributed mapping with the specified parameters for Scout_2_2 in a new terminal..."
-gnome-terminal -- bash -c "
-    export ROS_DOMAIN_ID=2; 
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_2_2.yaml  namespace:=/b rviz_config:=scout_2_2.rviz;  
-    exec bash
-"
-
 # Launch the LIO-SAM node in another new terminal
 echo "Launching domain bridge for a to b"
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=2; 
     ros2 run domain_bridge domain_bridge /home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/DomainBridge/b_to_a.yaml;
+    exec bash
+"
+
+# Launch the distributed mapping node in another new terminal
+echo "Launching distributed mapping with the specified parameters for Scout_2_2 in a new terminal..."
+gnome-terminal -- bash -c "
+    export ROS_DOMAIN_ID=2; 
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_2_2.yaml  namespace:=/b rviz_config:=scout_2_2.rviz;  
     exec bash
 "
 

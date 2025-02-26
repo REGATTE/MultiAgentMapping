@@ -316,6 +316,7 @@ public:
         static double timeLastProcessing = -1;
         if (timeLaserInfoCur - timeLastProcessing >= mappingProcessInterval)
         {
+            dist_mapping.unlockOnCall();
             timeLastProcessing = timeLaserInfoCur;
 
             updateInitialGuess();
@@ -376,6 +377,7 @@ public:
             }
 
             dist_mapping.publishTransformation(timeLaserInfoStamp);
+            dist_mapping.lockOnCall();
 
             publishOdometry();
         }
@@ -1122,10 +1124,13 @@ int main(int argc, char** argv)
     auto MO = std::make_shared<mapOptimization>(options);
 
     // Use SingleThreadedExecutor (since MultiThreadedExecutor caused failures)
-    rclcpp::executors::SingleThreadedExecutor exec;
+    // rclcpp::executors::SingleThreadedExecutor exec;
+    rclcpp::executors::MultiThreadedExecutor exec(rclcpp::ExecutorOptions(), 4);
     exec.add_node(MO);
 
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "\033[1;32m----> Map Optimization Started.\033[0m");
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     // Start distributed mapping loop closure threads
     // std::thread intraLoopThread(&distributedMapping::intraLoopClosureThread, &(MO->dist_mapping));

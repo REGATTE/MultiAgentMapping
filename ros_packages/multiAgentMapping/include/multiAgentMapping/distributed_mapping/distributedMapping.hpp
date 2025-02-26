@@ -70,6 +70,9 @@ class distributedMapping : public paramsServer{
 		void intraLoopClosureThread();
 		void interLoopClosureThread();
 		void globalMapThread();
+
+		void lockOnCall();
+		void unlockOnCall();
     
     private:
         void poseCovariance2msg(
@@ -81,7 +84,7 @@ class distributedMapping : public paramsServer{
 			graph_utils::PoseWithCovariance& pose);
 
 		void globalDescriptorHandler(
-			const multi_agent_mapping::msg::GlobalDescriptor::SharedPtr& msg,
+			const multi_agent_mapping::msg::GlobalDescriptor::SharedPtr msg,
 			int id);
 
 		void loopInfoHandler(
@@ -179,6 +182,9 @@ class distributedMapping : public paramsServer{
     
     private:
         vector<singleRobot> robots;
+
+		std::mutex descriptors_mutex;
+
         /*** ROS2 subscribers and publishers ***/
         rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr pub_loop_closure_constraints;
         rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pub_scan_of_scan2map;

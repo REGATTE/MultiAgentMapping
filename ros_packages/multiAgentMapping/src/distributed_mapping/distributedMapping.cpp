@@ -1,8 +1,10 @@
 #include "multiAgentMapping/distributed_mapping/distributedMapping.hpp"
 
 void distributedMapping::globalDescriptorHandler(
-	const multi_agent_mapping::msg::GlobalDescriptor::SharedPtr& msg,
+	const multi_agent_mapping::msg::GlobalDescriptor::SharedPtr msg,
 	int id){
+
+	std::lock_guard<std::mutex> lock(descriptors_mutex);
 
 	if (!msg) {
 		RCLCPP_ERROR(

@@ -9,6 +9,11 @@ distributedMapping::distributedMapping() : paramsServer(){
     // Log initialization message
     RCLCPP_INFO(logger, "Distributed mapping class initialization. Log name: %s, Log directory: %s",  log_name.c_str(), log_dir.c_str());
 
+    rclcpp::QoS qos_profile(50);
+    qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+    qos_profile.durability(RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL);
+    qos_profile.history(RMW_QOS_POLICY_HISTORY_KEEP_LAST);
+
     singleRobot robot;
     for (int it=0; it<number_of_robots_; it++){
         // robot info
@@ -24,13 +29,13 @@ distributedMapping::distributedMapping() : paramsServer(){
                 // publish global descriptors
                 robot.pub_descriptors = this->create_publisher<multi_agent_mapping::msg::GlobalDescriptor>(
                     robot.robot_name + "/distributedMapping/globalDescriptors", 
-                    rclcpp::QoS(5).reliable()
+                    qos_profile
                 );
                 RCLCPP_INFO(this->get_logger(), "Publishing to: %s", (robot.robot_name + "/distributedMapping/globalDescriptors").c_str());
                 // publish Loop Info
                 robot.pub_loop_info = this->create_publisher<multi_agent_mapping::msg::LoopInfo>(
                     robot.robot_name + "/distributedMapping/loopInfo", 
-                    rclcpp::QoS(5).reliable()
+                    qos_profile
                 );
                 RCLCPP_INFO(this->get_logger(), "Publishing to: %s", (robot.robot_name + "/distributedMapping/loopInfo").c_str());
             }
@@ -38,23 +43,23 @@ distributedMapping::distributedMapping() : paramsServer(){
                 // publish optimization state
                 robot.pub_optimization_state = this->create_publisher<std_msgs::msg::Int8>(
                     robot.robot_name + "/distributedMapping/optimizationState", 
-                    rclcpp::QoS(50).reliable()
+                    qos_profile
                 );
                 robot.pub_rotation_estimate_state = this->create_publisher<std_msgs::msg::Int8>(
                     robot.robot_name + "/distributedMapping/rotationEstimateState", 
-                    rclcpp::QoS(50).reliable()
+                    qos_profile
                 );
                 robot.pub_pose_estimate_state = this->create_publisher<std_msgs::msg::Int8>(
                     robot.robot_name + "/distributedMapping/poseEstimateState", 
-                    rclcpp::QoS(50).reliable()
+                    qos_profile
                 );
                 robot.pub_neighbor_rotation_estimates = this->create_publisher<multi_agent_mapping::msg::NeighborEstimate>(
                     robot.robot_name + "/distributedMapping/neighborRotationEstimates", 
-                    rclcpp::QoS(50).reliable()
+                    qos_profile
                 );
                 robot.pub_neighbor_pose_estimates = this->create_publisher<multi_agent_mapping::msg::NeighborEstimate>(
                     robot.robot_name + "/distributedMapping/neighborPoseEstimates", 
-                    rclcpp::QoS(50).reliable()
+                    qos_profile
                 );
             }
         } else {
@@ -62,16 +67,22 @@ distributedMapping::distributedMapping() : paramsServer(){
                 // Global Descriptor subscription
                 robot.sub_descriptors = this->create_subscription<multi_agent_mapping::msg::GlobalDescriptor>(
                     robot.robot_name + "/distributedMapping/globalDescriptors",
-                    rclcpp::QoS(50).reliable(),
+                    qos_profile,
                     [this, it](const multi_agent_mapping::msg::GlobalDescriptor::SharedPtr msg) {
-                        RCLCPP_INFO(this->get_logger(), 
-                            "[CALLBACK TRIGGERED] Received global descriptor from robot %d on topic: %s | Index: %d | Timestamp: %d.%d",
-                            it, 
-                            (robots[it].robot_name + "/distributedMapping/globalDescriptors").c_str(),
-                            msg->index,
-                            msg->header.stamp.sec,
-                            msg->header.stamp.nanosec);
-                        this->globalDescriptorHandler(msg, it);
+                        try {
+                            RCLCPP_INFO(this->get_logger(), 
+                                "[CALLBACK TRIGGERED] Received global descriptor from robot %d on topic: %s | Index: %d | Timestamp: %d.%d",
+                                it, 
+                                (robots[it].robot_name + "/distributedMapping/globalDescriptors").c_str(),
+                                msg->index,
+                                msg->header.stamp.sec,
+                                msg->header.stamp.nanosec);
+                            this->globalDescriptorHandler(msg, it);
+                        } catch (const std::exception& e) {
+                            RCLCPP_ERROR(this->get_logger(), "Exception caught in lambda: %s", e.what());
+                        } catch (...) {
+                            RCLCPP_ERROR(this->get_logger(), "Unknown exception caught in lambda.");
+                        }
                     });
                 
                 RCLCPP_INFO(this->get_logger(), "[SUBSCRIBED] to: %s", (robot.robot_name + "/distributedMapping/globalDescriptors").c_str());
@@ -80,7 +91,7 @@ distributedMapping::distributedMapping() : paramsServer(){
                 // Loop Info subscription
                 robot.sub_loop_info = this->create_subscription<multi_agent_mapping::msg::LoopInfo>(
                     robot.robot_name + "/distributedMapping/loopInfo",
-                    rclcpp::QoS(50).reliable(),
+                    qos_profile,
                     [this, it](const multi_agent_mapping::msg::LoopInfo::SharedPtr msg) {
                         RCLCPP_INFO(this->get_logger(), 
                             "[CALLBACK TRIGGERED] Received loop info from robot %d on topic: %s | Robot0: %d | Index0: %d | Robot1: %d | Index1: %d",
@@ -99,35 +110,35 @@ distributedMapping::distributedMapping() : paramsServer(){
             if (global_optimization_enable_) {
                 robot.sub_optimization_state = this->create_subscription<std_msgs::msg::Int8>(
                     robot.robot_name + "/distributedMapping/optimizationState",
-                    rclcpp::QoS(50).reliable(),
+                    qos_profile,
                     [this, it](const std_msgs::msg::Int8::SharedPtr msg) {
                         this->optStateHandler(msg, it);
                 });
 
                 robot.sub_rotation_estimate_state = this->create_subscription<std_msgs::msg::Int8>(
                     robot.robot_name + "/distributedMapping/rotationEstimateState",
-                    rclcpp::QoS(50).reliable(),
+                    qos_profile,
                     [this, it](const std_msgs::msg::Int8::SharedPtr msg) {
                         this->rotationStateHandler(msg, it);
                  });
 
                 robot.sub_pose_estimate_state = this->create_subscription<std_msgs::msg::Int8>(
                     robot.robot_name + "/distributedMapping/poseEstimateState",
-                    rclcpp::QoS(50).reliable(),
+                    qos_profile,
                     [this, it](const std_msgs::msg::Int8::SharedPtr msg) {
                         this->poseStateHandler(msg, it);
                 });
 
                 robot.sub_neighbor_rotation_estimates = this->create_subscription<multi_agent_mapping::msg::NeighborEstimate>(
                     robot.robot_name + "/distributedMapping/neighborRotationEstimates",
-                    rclcpp::QoS(50).reliable(),
+                    qos_profile,
                     [this, it](const multi_agent_mapping::msg::NeighborEstimate::SharedPtr msg) {
                         this->neighborRotationHandler(msg, it);
                 });
 
                 robot.sub_neighbor_pose_estimates = this->create_subscription<multi_agent_mapping::msg::NeighborEstimate>(
                     robot.robot_name + "/distributedMapping/neighborPoseEstimates",
-                    rclcpp::QoS(50).reliable(),
+                    qos_profile,
                     [this, it](const multi_agent_mapping::msg::NeighborEstimate::SharedPtr msg) {
                         this->neighborPoseHandler(msg, it);
                 });
@@ -301,6 +312,13 @@ distributedMapping::distributedMapping() : paramsServer(){
 }
 
 distributedMapping::~distributedMapping(){}
+
+void distributedMapping::lockOnCall(){
+    lock_on_call.lock();
+}
+void distributedMapping::unlockOnCall(){
+    lock_on_call.unlock();
+}
 
 pcl::PointCloud<PointPose3D>::Ptr distributedMapping::getLocalKeyposesCloud3D()
 {
