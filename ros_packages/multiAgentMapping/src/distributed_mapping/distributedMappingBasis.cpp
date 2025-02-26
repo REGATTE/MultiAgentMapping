@@ -1,6 +1,7 @@
 #include "multiAgentMapping/distributed_mapping/distributedMapping.hpp"
 
-distributedMapping::distributedMapping() : paramsServer(){
+distributedMapping::distributedMapping(const rclcpp::NodeOptions & options) 
+    : paramsServer("distributed_mapping", options) {
     std::string log_name = robot_name + "/distributed_mapping";
     // Get logger instance
     auto logger = rclcpp::get_logger(log_name);

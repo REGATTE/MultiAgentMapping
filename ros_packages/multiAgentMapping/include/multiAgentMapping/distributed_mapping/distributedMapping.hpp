@@ -45,7 +45,7 @@ using namespace std;
 
 class distributedMapping : public paramsServer{
     public:
-        distributedMapping();
+        distributedMapping(const rclcpp::NodeOptions & options);
         ~distributedMapping();
         pcl::PointCloud<PointPose3D>::Ptr getLocalKeyposesCloud3D();
 		pcl::PointCloud<PointPose6D>::Ptr getLocalKeyposesCloud6D();
