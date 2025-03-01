@@ -133,7 +133,7 @@ void distributedMapping::neighborRotationHandler(
 				current_rotation_estimate_iteration++;	// Increment the iteration counter
 			} catch(const std::exception& ex){
 				// Log any errors encountered during rotation estimation and abort optimization
-				RCLCPP_ERROR(this->get_logger(), "Stopping rotation optimization %d: %s.", robot_id, ex.what());
+				RCLCPP_ERROR(this->get_logger(), "[neighborRotationHandler] - Stopping rotation optimization %d: %s.", robot_id, ex.what());
 				abortOptimization(true);
 			}
 
@@ -159,9 +159,20 @@ void distributedMapping::neighborRotationHandler(
 		// Send the rotation estimate to the next robot in the optimization order
 		if(!send_flag){
 			// clear buffer
-			for(const auto& neighbor : neighbors_within_communication_range){
-				robots[neighbor].estimate_msg.pose_id.clear();
-				robots[neighbor].estimate_msg.estimate.clear();
+			for(const auto& neighbor : neighbors_within_communication_range) {
+				if (neighbor >= robots.size()) {
+					RCLCPP_ERROR(this->get_logger(), "Invalid neighbor ID: %d (robots size: %lu)", 
+						neighbor, robots.size());
+					continue;
+				}
+				
+				try {
+					robots[neighbor].estimate_msg.pose_id.clear();
+					robots[neighbor].estimate_msg.estimate.clear();
+				} catch (const std::exception& e) {
+					RCLCPP_ERROR(this->get_logger(), "Error clearing vectors for neighbor %d: %s", 
+						neighbor, e.what());
+				}
 			}
 			// extract rotation estimate for each loop closure
 			for(const std::pair<Symbol, Symbol>& separator_symbols: optimizer->separatorsSymbols()){
@@ -275,7 +286,7 @@ void distributedMapping::neighborPoseHandler(
 				optimizer->updateInitialized(true);
 				current_pose_estimate_iteration++;
 			} catch(const std::exception& ex){
-				RCLCPP_ERROR(this->get_logger(), "Stopping pose estimation %d: %s.", robot_id, ex.what());
+				RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler] - Stopping pose estimation %d: %s.", robot_id, ex.what());
 				abortOptimization(true);
 			}
 
@@ -286,7 +297,7 @@ void distributedMapping::neighborPoseHandler(
 			}
 			RCLCPP_INFO(
 				this->get_logger(), 
-				"--->Pose estimation<%d> iter: [%d/%d] change: %.4f.", 
+				"[neighborPoseHandler] - --->Pose estimation<%d> iter: [%d/%d] change: %.4f.", 
 				robot_id, 
 				current_pose_estimate_iteration, 
 				optimization_maximum_iteration_, 
@@ -311,10 +322,21 @@ void distributedMapping::neighborPoseHandler(
 			// Send the pose estimate to the next robot in the optimization order
 			if(!send_flag){
 				// clear buffer
-				for(const auto& neighbor : neighbors_within_communication_range){
-					robots[neighbor].estimate_msg.pose_id.clear();
-					robots[neighbor].estimate_msg.estimate.clear();
-					robots[neighbor].estimate_msg.anchor_offset.clear();
+				for(const auto& neighbor : neighbors_within_communication_range) {
+					if (neighbor >= robots.size()) {
+						RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler] - Invalid neighbor ID: %d (robots size: %lu)", 
+							neighbor, robots.size());
+						continue;
+					}
+					
+					try {
+						robots[neighbor].estimate_msg.pose_id.clear();
+						robots[neighbor].estimate_msg.estimate.clear();
+						robots[neighbor].estimate_msg.anchor_offset.clear();
+					} catch (const std::exception& e) {
+						RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler] - Error clearing vectors for neighbor %d: %s", 
+							neighbor, e.what());
+					}
 				}
 			}
 			// extract pose estimate from each loop closure

@@ -134,7 +134,7 @@ public:
             }
             catch (tf2::TransformException ex)
             {
-                RCLCPP_ERROR(get_logger(), "%s", ex.what());
+                RCLCPP_ERROR(get_logger(), "[lidarOdometryHandler] - %s", ex.what());
             }
             tf2::Stamped<tf2::Transform> tb(
                 tCur * lidar2Baselink, tf2_ros::fromMsg(odomMsg->header.stamp), name + "/" +  odometryFrame);

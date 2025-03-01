@@ -20,7 +20,12 @@ void distributedMapping::performInterLoopClosure(){
 		return;
 	}
 
-	RCLCPP_INFO(this->get_logger(), "Performing inter loop closure function initiated!");
+	// Only log when first starting
+    static bool first_run = true;
+    if (first_run) {
+        RCLCPP_INFO(this->get_logger(), "Performing inter loop closure function initiated!");
+        first_run = false;
+    }
 
     // Step 1: Perform place recognition to find a candidate loop closure
     RCLCPP_INFO(this->get_logger(), "[InterLoopClosure : performInterLoopClosure] -> find loop closure ID");
@@ -111,7 +116,12 @@ void distributedMapping::performExternLoopClosure(){
     if(loop_closures_candidates.empty() || !inter_robot_loop_closure_enable_){
 		return;
 	}
-    RCLCPP_INFO(this->get_logger(), "Performing extern inter loop closure function initiated!");
+    // Only log when there's actually something to process
+    static bool first_run = true;
+    if (first_run) {
+        RCLCPP_INFO(this->get_logger(), "Performing extern inter loop closure function initiated!");
+        first_run = false;
+    }
 
     // Step 1: Extract the loop closure candidate for verification
 	multi_agent_mapping::msg::LoopInfo inter_loop = loop_closures_candidates.front();
