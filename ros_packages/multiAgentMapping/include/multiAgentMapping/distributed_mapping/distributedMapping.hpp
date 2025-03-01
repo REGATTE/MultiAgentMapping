@@ -304,6 +304,13 @@ class distributedMapping : public paramsServer{
 
 		set<pair<Key, Key>> accepted_keys, rejected_keys; // accepted and rejected pairs
 		int measurements_accepted_num, measurements_rejected_num;
+
+		//mutex calls
+		std::mutex state_mutex_;
+		std::mutex descriptor_mutex_;
+		std::mutex neighbor_mutex_;
+		std::mutex loop_closure_mutex_;
+
 };
 
 #endif // _DISTRIBUTED_MAPPING_H_

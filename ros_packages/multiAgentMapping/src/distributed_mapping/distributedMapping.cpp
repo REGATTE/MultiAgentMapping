@@ -4,6 +4,8 @@ void distributedMapping::globalDescriptorHandler(
 	const multi_agent_mapping::msg::GlobalDescriptor::SharedPtr& msg,
 	int id){
 
+	std::lock_guard<std::mutex> lock(descriptor_mutex_);
+
 	if (!msg) {
 		RCLCPP_ERROR(
 			this->get_logger(), 
@@ -26,7 +28,6 @@ void distributedMapping::globalDescriptorHandler(
         "[globalDescriptorHandler(%d)] Saving Descriptor. Index: %d | First Value: %f", 
         id, msg->index, msg->values.empty() ? -1.0 : msg->values[0]
     );
-	keyframe_descriptor->saveDescriptorAndKey(msg->values.data(), id, msg->index);
 	store_descriptors.emplace_back(make_pair(id,*msg));
 }
 
@@ -34,6 +35,7 @@ void distributedMapping::optStateHandler(
 	const std_msgs::msg::Int8::SharedPtr& msg,
 	int id)
 {
+	std::lock_guard<std::mutex> state_lock(state_mutex_);
 	neighbors_started_optimization[id] = (OptimizerState)msg->data <= OptimizerState::Start;
 	neighbor_state[id] = (OptimizerState)msg->data;
 	neighbors_lowest_id_included[id] = lowest_id_included;
@@ -133,7 +135,7 @@ void distributedMapping::neighborRotationHandler(
 				current_rotation_estimate_iteration++;	// Increment the iteration counter
 			} catch(const std::exception& ex){
 				// Log any errors encountered during rotation estimation and abort optimization
-				RCLCPP_ERROR(this->get_logger(), "Stopping rotation optimization %d: %s.", robot_id, ex.what());
+				RCLCPP_ERROR(this->get_logger(), "[neighborRotationHandler : !estimation_done] - Stopping rotation optimization %d: %s.", robot_id, ex.what());
 				abortOptimization(true);
 			}
 
@@ -275,7 +277,7 @@ void distributedMapping::neighborPoseHandler(
 				optimizer->updateInitialized(true);
 				current_pose_estimate_iteration++;
 			} catch(const std::exception& ex){
-				RCLCPP_ERROR(this->get_logger(), "Stopping pose estimation %d: %s.", robot_id, ex.what());
+				RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler : !estimation_done] - Stopping pose estimation %d: %s.", robot_id, ex.what());
 				abortOptimization(true);
 			}
 
@@ -641,93 +643,116 @@ bool distributedMapping::updatePoses(){
  * - Publish the descriptor for other robots to use
  */
 void distributedMapping::makeIrisDescriptor() {
-	// Process stored descriptors from other robots
-    while(!store_descriptors.empty()){
-        auto msg_data = store_descriptors.front().second;
-        auto msg_id = store_descriptors.front().first;
-        store_descriptors.pop_front();
-        keyframe_descriptor->saveDescriptorAndKey(msg_data.values.data(), msg_id, msg_data.index);
-        RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> Saving Iris Descriptors from Robot ID: [%d].", msg_id);
-    }
-
-    // Skip if no initial values or loop closure is disabled
-    if(initial_values->empty() || (!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_)){
-        return;
-    }
-
-    // Downsample keyframe for descriptor generation
-    cloud_for_descript_ds->clear();
-    downsample_filter_for_descriptor.setInputCloud(robots[robot_id].keyframe_cloud);
-    downsample_filter_for_descriptor.filter(*cloud_for_descript_ds);
-
-    RCLCPP_INFO(this->get_logger(), "[DEBUG] Filtered LiDAR PointCloud Size: %lu", cloud_for_descript_ds->size());
-
-    // Generate descriptor and prepare message
-    auto descriptor_vec = keyframe_descriptor->makeAndSaveDescriptorAndKey(*cloud_for_descript_ds, robot_id, initial_values->size()-1);
-
-    // Prepare message vector with proper capacity
-    global_descriptor_msg.values.clear();
-    global_descriptor_msg.values.reserve(descriptor_vec.size());
-    
-    // Copy values explicitly to ensure data integrity
-    for(size_t i = 0; i < descriptor_vec.size(); i++) {
-        global_descriptor_msg.values.push_back(descriptor_vec[i]);
-    }
-
-    // Verify data transfer and log details
-    std::stringstream ss;
-    ss << "Message data verification:\n";
-    ss << "  Original vector size: " << descriptor_vec.size() << "\n";
-    ss << "  Message vector size: " << global_descriptor_msg.values.size() << "\n";
-    
-    // Assuming the first 28800 values (80x360) are iris image data
-    const size_t iris_size = 28800;  // 80x360
-    
-    // Verify iris image part
-    ss << "  First 5 non-zero iris values:";
-    int count = 0;
-    for(size_t i = 0; i < iris_size && count < 5; i++) {
-        if(global_descriptor_msg.values[i] > 0) {
-            ss << " " << global_descriptor_msg.values[i];
-            count++;
+	std::lock_guard<std::mutex> desc_lock(descriptor_mutex_);
+    std::lock_guard<std::mutex> state_lock(state_mutex_);  // Add state lock
+	try{
+		// Process stored descriptors from other robots
+		// Process stored descriptors
+        while(!store_descriptors.empty()) {
+            auto& front_descriptor = store_descriptors.front();
+            if (front_descriptor.second.values.size() > 0) {
+                keyframe_descriptor->saveDescriptorAndKey(
+                    front_descriptor.second.values.data(),
+                    front_descriptor.first,
+                    front_descriptor.second.index
+                );
+            }
+            store_descriptors.pop_front();
         }
-    }
-    
-    // Verify descriptor part
-    ss << "\n  First 5 descriptor values:";
-    for(size_t i = 0; i < 5; i++) {
-        ss << " " << global_descriptor_msg.values[iris_size + i];
-    }
-    
-    // Compare with original data
-    ss << "\n  Original first 5 descriptor values:";
-    for(size_t i = iris_size; i < iris_size + 5; i++) {
-        ss << " " << descriptor_vec[i];
-    }
-    
-    RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
 
-    // keyfame index
-    global_descriptor_msg.index = initial_values->size()-1;
-    global_descriptor_msg.header.stamp = robots[robot_id].time_cloud_input_stamp;
-    
-    // Final verification before publishing
-    RCLCPP_INFO(this->get_logger(), 
-        "Final message verification:\n"
-        "  Total size: %zu\n"
-        "  Non-zero iris values: %zu\n"
-        "  First descriptor value: %.6f",
-        global_descriptor_msg.values.size(),
-        std::count_if(global_descriptor_msg.values.begin(), 
-                     global_descriptor_msg.values.begin() + iris_size,
-                     [](float f) { return f > 0.0f; }),
-        global_descriptor_msg.values[iris_size]);
-    
-    // publish message
-    robots[robot_id].pub_descriptors->publish(global_descriptor_msg);
-    
-    RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> Finished makeIrisDescriptors[%d].", robot_id);
+		// Skip if no initial values or loop closure is disabled
+		if(initial_values->empty() || (!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_)){
+			return;
+		}
+
+		// Prepare cloud
+        cloud_for_descript_ds->clear();
+        downsample_filter_for_descriptor.setInputCloud(robots[robot_id].keyframe_cloud);
+        downsample_filter_for_descriptor.filter(*cloud_for_descript_ds);
+
+		if (cloud_for_descript_ds->empty()) {
+            RCLCPP_WARN(this->get_logger(), "Empty downsampled cloud, skipping descriptor generation");
+            return;
+        }
+
+		RCLCPP_INFO(this->get_logger(), "[DEBUG] Filtered LiDAR PointCloud Size: %lu", cloud_for_descript_ds->size());
+
+		// Generate descriptor and prepare message
+		auto descriptor_vec = keyframe_descriptor->makeAndSaveDescriptorAndKey(*cloud_for_descript_ds, robot_id, initial_values->size()-1);
+
+		if (descriptor_vec.empty()) {
+            RCLCPP_WARN(this->get_logger(), "Empty descriptor vector generated, skipping message creation");
+            return;
+        }
+
+        // Prepare message with size validation
+        const size_t expected_size = descriptor_vec.size();
+        if (expected_size == 0) {
+            RCLCPP_ERROR(this->get_logger(), "Invalid descriptor size: %zu", expected_size);
+            return;
+        }
+
+        // Clear and pre-allocate with size check
+        global_descriptor_msg.values.clear();
+		global_descriptor_msg.values = descriptor_vec;  // Direct assignment
+
+		// Verify data transfer and log details
+		std::stringstream ss;
+		ss << "Message data verification:\n";
+		ss << "  Original vector size: " << descriptor_vec.size() << "\n";
+		ss << "  Message vector size: " << global_descriptor_msg.values.size() << "\n";
+		
+		 // Get iris size for verification
+        const size_t iris_size = 80 * 360;  // rows * columns from descriptor initialization
+		
+		// Verify iris values
+        ss << "  First 5 non-zero iris values:";
+        for(size_t i = 0; i < iris_size && i < descriptor_vec.size(); i++) {
+            if(descriptor_vec[i] > 0) {
+                ss << " " << descriptor_vec[i];
+                if(i >= 4) break;
+            }
+        }
+		
+		// Verify descriptor part
+        ss << "\n  First 5 descriptor values:";
+        for(size_t i = 0; i < 5 && (iris_size + i) < descriptor_vec.size(); i++) {
+            ss << " " << global_descriptor_msg.values[iris_size + i];
+        }
+		
+		// Compare with original data
+        ss << "\n  Original first 5 descriptor values:";
+        for(size_t i = 0; i < 5 && (iris_size + i) < descriptor_vec.size(); i++) {
+            ss << " " << descriptor_vec[iris_size + i];
+        }
+		
+		 RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+
+        // Final verification
+        RCLCPP_INFO(this->get_logger(), "Final message verification:\n"
+            "  Total size: %zu\n"
+            "  Non-zero iris values: %zu\n"
+            "  First descriptor value: %.6f",
+            global_descriptor_msg.values.size(),
+            std::count_if(global_descriptor_msg.values.begin(), 
+                         global_descriptor_msg.values.begin() + iris_size,
+                         [](float f) { return f > 0.0f; }),
+            global_descriptor_msg.values[iris_size]);
+
+        // Set message metadata
+        global_descriptor_msg.index = initial_values->size()-1;
+        global_descriptor_msg.header.stamp = robots[robot_id].time_cloud_input_stamp;
+
+        // Publish message
+        robots[robot_id].pub_descriptors->publish(global_descriptor_msg);
+
+        RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> Finished makeIrisDescriptors[%d].", robot_id);
+
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), "[makeIrisDescriptor] - Error in makeIrisDescriptor: %s", e.what());
+    }
 }
+
 void distributedMapping::publishPath(){
 	// publish global path
 	if(pub_global_path->get_subscription_count()!=0){
@@ -1358,40 +1383,62 @@ void distributedMapping::endOptimization(){
 }
 
 void distributedMapping::changeOptimizerState(const OptimizerState& state) {
-    // Switch statement for handling different optimizer states with logging
-    switch (state) {
-        case OptimizerState::Idle:
-            RCLCPP_INFO(this->get_logger(), "<%d> Idle", robot_id);
-            break;
-        case OptimizerState::Start:
-            RCLCPP_INFO(this->get_logger(), "<%d> Start", robot_id);
-            break;
-        case OptimizerState::Initialization:
-            RCLCPP_INFO(this->get_logger(), "<%d> Initialization", robot_id);
-            break;
-        case OptimizerState::RotationEstimation:
-            RCLCPP_INFO(this->get_logger(), "<%d> RotationEstimation", robot_id);
-            break;
-        case OptimizerState::PoseEstimationInitialization:
-            RCLCPP_INFO(this->get_logger(), "<%d> PoseEstimationInitialization", robot_id);
-            break;
-        case OptimizerState::PoseEstimation:
-            RCLCPP_INFO(this->get_logger(), "<%d> PoseEstimation", robot_id);
-            break;
-        case OptimizerState::End:
-            RCLCPP_INFO(this->get_logger(), "<%d> End", robot_id);
-            break;
-        case OptimizerState::PostEndingCommunicationDelay:
-            RCLCPP_INFO(this->get_logger(), "<%d> PostEndingCommunicationDelay", robot_id);
-            break;
-    }
+	std::lock_guard<std::mutex> state_lock(state_mutex_);
+    std::lock_guard<std::mutex> loop_lock(loop_closure_mutex_);
+	try{
+		// Validate state transition
+        if (optimizer_state == OptimizerState::Start && state == OptimizerState::Idle) {
+            // Ensure all pending operations are complete
+            if (!store_descriptors.empty() || !loop_closures_candidates.empty()) {
+                RCLCPP_WARN(this->get_logger(), 
+                    "<%d> Warning: Pending operations during state transition", robot_id);
+            }
+        }
+		// Switch statement for handling different optimizer states with logging
+		switch (state) {
+			case OptimizerState::Idle:
+				RCLCPP_INFO(this->get_logger(), "<%d> Idle", robot_id);
+				break;
+			case OptimizerState::Start:
+				RCLCPP_INFO(this->get_logger(), "<%d> Start", robot_id);
+				break;
+			case OptimizerState::Initialization:
+				RCLCPP_INFO(this->get_logger(), "<%d> Initialization", robot_id);
+				break;
+			case OptimizerState::RotationEstimation:
+				RCLCPP_INFO(this->get_logger(), "<%d> RotationEstimation", robot_id);
+				break;
+			case OptimizerState::PoseEstimationInitialization:
+				RCLCPP_INFO(this->get_logger(), "<%d> PoseEstimationInitialization", robot_id);
+				break;
+			case OptimizerState::PoseEstimation:
+				RCLCPP_INFO(this->get_logger(), "<%d> PoseEstimation", robot_id);
+				break;
+			case OptimizerState::End:
+				RCLCPP_INFO(this->get_logger(), "<%d> End", robot_id);
+				break;
+			case OptimizerState::PostEndingCommunicationDelay:
+				RCLCPP_INFO(this->get_logger(), "<%d> PostEndingCommunicationDelay", robot_id);
+				break;
+		}
 
-    // Update the optimizer state
-    optimizer_state = state;
-
-    // Update the state message and publish it
-    state_msg.data = static_cast<int>(optimizer_state);
-    robots[robot_id].pub_optimization_state->publish(state_msg);
+		// Update state with validation
+        if (state >= OptimizerState::Idle && state <= OptimizerState::PostEndingCommunicationDelay) {
+            optimizer_state = state;
+            state_msg.data = static_cast<int8_t>(optimizer_state);
+            
+            // Ensure publisher exists before publishing
+            if (robots[robot_id].pub_optimization_state) {
+                robots[robot_id].pub_optimization_state->publish(state_msg);
+            } else {
+                throw std::runtime_error("Publisher not initialized");
+            }
+        } else {
+            throw std::invalid_argument("Invalid optimizer state");
+        }
+	} catch (const std::exception& e) {
+		RCLCPP_ERROR(this->get_logger(), "[changeOptimizerState] - Error in changeOptimizerState stateTransition: %s", e.what());
+	}
 }
 
 void distributedMapping::run()

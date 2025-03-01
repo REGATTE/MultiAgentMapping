@@ -34,8 +34,15 @@ void distributedMapping::loopInfoHandler(
         }
 
         // filtered pointcloud
-		pcl::PointCloud<PointPose3D>::Ptr cloudTemp(new pcl::PointCloud<PointPose3D>());
-		*cloudTemp = robots[robot_id].keyframe_cloud_array[loop_msg.index0];
+        pcl::PointCloud<PointPose3D>::Ptr cloudTemp(new pcl::PointCloud<PointPose3D>());
+		try {
+            RCLCPP_INFO(this->get_logger(), "[LoopInfoHandler] Source cloud size: %lu", robots[robot_id].keyframe_cloud_array[loop_msg.index0].size());
+            *cloudTemp = robots[robot_id].keyframe_cloud_array[loop_msg.index0];
+            RCLCPP_INFO(this->get_logger(), "[LoopInfoHandler] Cloud copy completed. Size: %lu", cloudTemp->size());
+        } catch (const std::exception& e) {
+            RCLCPP_ERROR(this->get_logger(), "[LoopInfoHandler] Error in point cloud operations: %s", e.what());
+            throw;
+        }
 		downsample_filter_for_inter_loop2.setInputCloud(cloudTemp);
 		downsample_filter_for_inter_loop2.filter(*cloudTemp);
 		pcl::toROSMsg(*cloudTemp, loop_msg.scan_cloud);

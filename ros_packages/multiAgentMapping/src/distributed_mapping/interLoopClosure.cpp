@@ -73,13 +73,19 @@ void distributedMapping::performInterLoopClosure(){
 		inter_loop_candidate.noise = 888.0;
 
         // Create and downsample the keyframe point cloud for efficient processing
-		pcl::PointCloud<PointPose3D>::Ptr scan_cloud(new pcl::PointCloud<PointPose3D>());
-		pcl::PointCloud<PointPose3D>::Ptr scan_cloud_ds(new pcl::PointCloud<PointPose3D>());
-		*scan_cloud = robots[loop_robot0].keyframe_cloud_array[loop_key0];
-
-        // Downsample the keyframe point cloud using a predefined filter
-		downsample_filter_for_inter_loop3.setInputCloud(scan_cloud);
-		downsample_filter_for_inter_loop3.filter(*scan_cloud_ds);
+        pcl::PointCloud<PointPose3D>::Ptr scan_cloud(new pcl::PointCloud<PointPose3D>());
+        pcl::PointCloud<PointPose3D>::Ptr scan_cloud_ds(new pcl::PointCloud<PointPose3D>());
+		try {
+            *scan_cloud = robots[loop_robot0].keyframe_cloud_array[loop_key0];
+            RCLCPP_INFO(this->get_logger(), "[performInterLoopClosure] Point cloud copy completed. Size: %lu", scan_cloud->size());
+            
+            downsample_filter_for_inter_loop3.setInputCloud(scan_cloud);
+            downsample_filter_for_inter_loop3.filter(*scan_cloud_ds);
+            RCLCPP_INFO(this->get_logger(), "[performInterLoopClosure] Downsampling completed. New size: %lu", scan_cloud_ds->size());
+        } catch (const std::exception& e) {
+            RCLCPP_ERROR(this->get_logger(), "[performInterLoopClosure] Error in point cloud operations: %s", e.what());
+            return;
+        }
 
         // Convert the downsampled point cloud to a ROS message and populate the message field
 		pcl::toROSMsg(*scan_cloud_ds, inter_loop_candidate.scan_cloud);
@@ -107,6 +113,9 @@ void distributedMapping::performInterLoopClosure(){
  * 7. Publish the loop closure and update local maps.
  */
 void distributedMapping::performExternLoopClosure(){
+    std::lock_guard<std::mutex> loop_lock(loop_closure_mutex_);
+    std::lock_guard<std::mutex> state_lock(state_mutex_);
+
     // Check if there are any loop closure candidates and if inter-robot loop closures are enabled
     if(loop_closures_candidates.empty() || !inter_robot_loop_closure_enable_){
 		return;
