@@ -4,14 +4,6 @@ void distributedMapping::globalDescriptorHandler(
 	const multi_agent_mapping::msg::GlobalDescriptor::SharedPtr& msg,
 	int id){
 
-	if (!msg) {
-		RCLCPP_ERROR(
-			this->get_logger(), 
-			"[globalDescriptorHandler] ERROR: Received NULL message for Robot ID: %d", 
-			id
-		);
-		return;
-	}
 	RCLCPP_INFO(
         this->get_logger(), 
         "[CALLBACK INITIATED] [globalDescriptorHandler(%d)] Received Global Descriptor.", 
@@ -26,7 +18,6 @@ void distributedMapping::globalDescriptorHandler(
         "[globalDescriptorHandler(%d)] Saving Descriptor. Index: %d | First Value: %f", 
         id, msg->index, msg->values.empty() ? -1.0 : msg->values[0]
     );
-	keyframe_descriptor->saveDescriptorAndKey(msg->values.data(), id, msg->index);
 	store_descriptors.emplace_back(make_pair(id,*msg));
 }
 
@@ -34,11 +25,20 @@ void distributedMapping::optStateHandler(
 	const std_msgs::msg::Int8::SharedPtr& msg,
 	int id)
 {
+	// Validate robot ID
+	if (id >= number_of_robots_ || id < 0) {
+		RCLCPP_ERROR(this->get_logger(), 
+			"[optStateHandler] Invalid robot ID: %d", id);
+		return;
+	}
+
 	neighbors_started_optimization[id] = (OptimizerState)msg->data <= OptimizerState::Start;
 	neighbor_state[id] = (OptimizerState)msg->data;
 	neighbors_lowest_id_included[id] = lowest_id_included;
-	if(neighbors_within_communication_range.find(id) == neighbors_within_communication_range.end())
-	{
+	
+	// Safe insertion into communication range set
+	if (neighbors_within_communication_range.find(id) == 
+		neighbors_within_communication_range.end()) {
 		neighbors_within_communication_range.insert(id);
 	}
 }
@@ -165,13 +165,12 @@ void distributedMapping::neighborRotationHandler(
 						neighbor, robots.size());
 					continue;
 				}
-				
+				RCLCPP_ERROR(this->get_logger(), "try-catch loop for Error clearing vectors for neighbor");
 				try {
 					robots[neighbor].estimate_msg.pose_id.clear();
 					robots[neighbor].estimate_msg.estimate.clear();
 				} catch (const std::exception& e) {
-					RCLCPP_ERROR(this->get_logger(), "Error clearing vectors for neighbor %d: %s", 
-						neighbor, e.what());
+					std::cerr << "[distributedMapping] Error clearing vectors for neighbor " << neighbor << ": " << e.what() << std::endl;
 				}
 			}
 			// extract rotation estimate for each loop closure
@@ -287,6 +286,7 @@ void distributedMapping::neighborPoseHandler(
 				current_pose_estimate_iteration++;
 			} catch(const std::exception& ex){
 				RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler] - Stopping pose estimation %d: %s.", robot_id, ex.what());
+				std::cerr << "[neighborPoseHandler] - Stopping pose estimation " << robot_id << ": " << ex.what() << std::endl;
 				abortOptimization(true);
 			}
 
@@ -323,32 +323,31 @@ void distributedMapping::neighborPoseHandler(
 			if(!send_flag){
 				// clear buffer
 				for(const auto& neighbor : neighbors_within_communication_range) {
-					if (neighbor >= robots.size()) {
-						RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler] - Invalid neighbor ID: %d (robots size: %lu)", 
-							neighbor, robots.size());
-						continue;
-					}
-					
-					try {
-						robots[neighbor].estimate_msg.pose_id.clear();
-						robots[neighbor].estimate_msg.estimate.clear();
-						robots[neighbor].estimate_msg.anchor_offset.clear();
-					} catch (const std::exception& e) {
-						RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler] - Error clearing vectors for neighbor %d: %s", 
-							neighbor, e.what());
-					}
+					robots[neighbor].estimate_msg.pose_id.clear();
+					robots[neighbor].estimate_msg.estimate.clear();
+					robots[neighbor].estimate_msg.anchor_offset.clear();
 				}
 			}
 			// extract pose estimate from each loop closure
 			for(const std::pair<Symbol, Symbol>& separator_symbols: optimizer->separatorsSymbols()){
-				int other_robot = (int)(separator_symbols.first.chr() - 'a');
+				RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler] - try-catch loop for Error processing separator symbols");
+				try{
+					int other_robot = (int)(separator_symbols.first.chr() - 'a');
 
-				robots[other_robot].estimate_msg.pose_id.push_back(separator_symbols.second.index());
+					if (other_robot >= robots.size()) {
+						RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler] Invalid robot index: %d", other_robot);
+						continue;
+					}
 
-				Vector pose_estimate = optimizer->linearizedPosesAt(separator_symbols.second.key());
-				for(int it = 0; it < 6; it++)
-				{
-					robots[other_robot].estimate_msg.estimate.push_back(pose_estimate[it]);
+					robots[other_robot].estimate_msg.pose_id.push_back(separator_symbols.second.index());
+
+					Vector pose_estimate = optimizer->linearizedPosesAt(separator_symbols.second.key());
+					for(int it = 0; it < 6; it++)
+					{
+						robots[other_robot].estimate_msg.estimate.push_back(pose_estimate[it]);
+					}
+				} catch(const std::exception& e){
+					std::cerr << "[neighborPoseHandler] - Error processing separator symbols: " << e.what() << std::endl;
 				}
 			}
 
@@ -364,9 +363,9 @@ void distributedMapping::neighborPoseHandler(
 
 				if(publish_flag)
 				{
-					for(int i = 0; i < 3; i++)
-					{
-						robots[other_robot].estimate_msg.anchor_offset.push_back(anchor_offset(i));
+					RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler] - try-catch loop for Error processing anchor offset for robot");
+					for(int j = 0; j < 3; j++) {
+						robots[other_robot].estimate_msg.anchor_offset.push_back(anchor_offset(j));
 					}
 					robots[other_robot].estimate_msg.initialized = optimizer->isRobotInitialized();
 					robots[other_robot].estimate_msg.receiver_id = other_robot;
@@ -374,6 +373,7 @@ void distributedMapping::neighborPoseHandler(
 					robots[robot_id].pub_neighbor_pose_estimates->publish(robots[other_robot].estimate_msg);
 				}
 			}
+
 			// send pose optimization state
 			pose_estimate_start = false;
 			optimizer->clearNeighboringRobotInit();
@@ -663,92 +663,98 @@ bool distributedMapping::updatePoses(){
  * - Publish the descriptor for other robots to use
  */
 void distributedMapping::makeIrisDescriptor() {
+	try{
 	// Process stored descriptors from other robots
-    while(!store_descriptors.empty()){
-        auto msg_data = store_descriptors.front().second;
-        auto msg_id = store_descriptors.front().first;
-        store_descriptors.pop_front();
-        keyframe_descriptor->saveDescriptorAndKey(msg_data.values.data(), msg_id, msg_data.index);
-        RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> Saving Iris Descriptors from Robot ID: [%d].", msg_id);
-    }
+		while(!store_descriptors.empty()){
+			auto msg_data = store_descriptors.front().second;
+			auto msg_id = store_descriptors.front().first;
+			store_descriptors.pop_front();
+            keyframe_descriptor->saveDescriptorAndKey(msg_data.values.data(), msg_id, msg_data.index);
+		}
 
-    // Skip if no initial values or loop closure is disabled
-    if(initial_values->empty() || (!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_)){
-        return;
-    }
+		// Skip if no initial values or loop closure is disabled
+		if(initial_values->empty() || (!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_)){
+			return;
+		}
 
-    // Downsample keyframe for descriptor generation
-    cloud_for_descript_ds->clear();
-    downsample_filter_for_descriptor.setInputCloud(robots[robot_id].keyframe_cloud);
-    downsample_filter_for_descriptor.filter(*cloud_for_descript_ds);
+		// Downsample keyframe for descriptor generation
+		cloud_for_descript_ds->clear();
+		downsample_filter_for_descriptor.setInputCloud(robots[robot_id].keyframe_cloud);
+		downsample_filter_for_descriptor.filter(*cloud_for_descript_ds);
 
-    RCLCPP_INFO(this->get_logger(), "[DEBUG] Filtered LiDAR PointCloud Size: %lu", cloud_for_descript_ds->size());
+		if (cloud_for_descript_ds->empty()) {
+			RCLCPP_WARN(this->get_logger(), 
+				"[makeIrisDescriptor] Empty downsampled cloud, skipping descriptor generation");
+			return;
+		}
 
-    // Generate descriptor and prepare message
-    auto descriptor_vec = keyframe_descriptor->makeAndSaveDescriptorAndKey(*cloud_for_descript_ds, robot_id, initial_values->size()-1);
+		RCLCPP_INFO(this->get_logger(), "[DEBUG] Filtered LiDAR PointCloud Size: %lu", cloud_for_descript_ds->size());
 
-    // Prepare message vector with proper capacity
-    global_descriptor_msg.values.clear();
-    global_descriptor_msg.values.reserve(descriptor_vec.size());
-    
-    // Copy values explicitly to ensure data integrity
-    for(size_t i = 0; i < descriptor_vec.size(); i++) {
-        global_descriptor_msg.values.push_back(descriptor_vec[i]);
-    }
+		// Generate descriptor and prepare message
+		auto descriptor_vec = keyframe_descriptor->makeAndSaveDescriptorAndKey(*cloud_for_descript_ds, robot_id, initial_values->size()-1);
 
-    // Verify data transfer and log details
-    std::stringstream ss;
-    ss << "Message data verification:\n";
-    ss << "  Original vector size: " << descriptor_vec.size() << "\n";
-    ss << "  Message vector size: " << global_descriptor_msg.values.size() << "\n";
-    
-    // Assuming the first 28800 values (80x360) are iris image data
-    const size_t iris_size = 28800;  // 80x360
-    
-    // Verify iris image part
-    ss << "  First 5 non-zero iris values:";
-    int count = 0;
-    for(size_t i = 0; i < iris_size && count < 5; i++) {
-        if(global_descriptor_msg.values[i] > 0) {
-            ss << " " << global_descriptor_msg.values[i];
-            count++;
-        }
-    }
-    
-    // Verify descriptor part
-    ss << "\n  First 5 descriptor values:";
-    for(size_t i = 0; i < 5; i++) {
-        ss << " " << global_descriptor_msg.values[iris_size + i];
-    }
-    
-    // Compare with original data
-    ss << "\n  Original first 5 descriptor values:";
-    for(size_t i = iris_size; i < iris_size + 5; i++) {
-        ss << " " << descriptor_vec[i];
-    }
-    
-    RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+        global_descriptor_msg.values.swap(descriptor_vec);
 
-    // keyfame index
-    global_descriptor_msg.index = initial_values->size()-1;
-    global_descriptor_msg.header.stamp = robots[robot_id].time_cloud_input_stamp;
-    
-    // Final verification before publishing
-    RCLCPP_INFO(this->get_logger(), 
-        "Final message verification:\n"
-        "  Total size: %zu\n"
-        "  Non-zero iris values: %zu\n"
-        "  First descriptor value: %.6f",
-        global_descriptor_msg.values.size(),
-        std::count_if(global_descriptor_msg.values.begin(), 
-                     global_descriptor_msg.values.begin() + iris_size,
-                     [](float f) { return f > 0.0f; }),
-        global_descriptor_msg.values[iris_size]);
-    
-    // publish message
-    robots[robot_id].pub_descriptors->publish(global_descriptor_msg);
-    
-    RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> Finished makeIrisDescriptors[%d].", robot_id);
+		
+		/*
+		// Verify data transfer and log details
+		std::stringstream ss;
+		ss << "Message data verification:\n";
+		ss << "  Original vector size: " << descriptor_vec.size() << "\n";
+		ss << "  Message vector size: " << global_descriptor_msg.values.size() << "\n";
+		
+		// Assuming the first 28800 values (80x360) are iris image data
+		const size_t iris_size = 28800;  // 80x360
+		
+		// Verify iris image part
+		ss << "  First 5 non-zero iris values:";
+		int count = 0;
+		for(size_t i = 0; i < iris_size && count < 5; i++) {
+			if(global_descriptor_msg.values[i] > 0) {
+				ss << " " << global_descriptor_msg.values[i];
+				count++;
+			}
+		}
+
+		// Verify descriptor part
+		ss << "\n  First 5 descriptor values:";
+		for(size_t i = 0; i < 5; i++) {
+			ss << " " << global_descriptor_msg.values[iris_size + i];
+		}
+		
+		// Compare with original data
+		ss << "\n  Original first 5 descriptor values:";
+		for(size_t i = iris_size; i < iris_size + 5; i++) {
+			ss << " " << descriptor_vec[i];
+		}
+
+		RCLCPP_INFO(this->get_logger(), "%s", ss.str().c_str());
+		*/
+
+		// keyfame index, set message metadata
+		global_descriptor_msg.index = initial_values->size()-1;
+		global_descriptor_msg.header.stamp = robots[robot_id].time_cloud_input_stamp;
+		
+		// Final verification before publishing
+		/*
+		RCLCPP_INFO(this->get_logger(), 
+			"Final message verification:\n"
+			"  Total size: %zu\n"
+			"  Non-zero iris values: %zu\n"
+			"  First descriptor value: %.6f",
+			global_descriptor_msg.values.size(),
+			std::count_if(global_descriptor_msg.values.begin(), 
+						global_descriptor_msg.values.begin() + iris_size,
+						[](float f) { return f > 0.0f; }),
+			global_descriptor_msg.values[iris_size]);
+		*/
+		// publish message
+		robots[robot_id].pub_descriptors->publish(global_descriptor_msg);
+
+		RCLCPP_INFO(this->get_logger(), "[DistributedMapping - mapOptimization] -> Finished makeIrisDescriptors[%d].", robot_id);
+	} catch (const std::exception& e) {
+		std::cerr << "[makeIrisDescriptor] Error in makeIrisDescriptor: " << e.what() << std::endl;
+	}
 }
 void distributedMapping::publishPath(){
 	// publish global path
@@ -880,7 +886,7 @@ void distributedMapping::updateOptimizer(){
 			neighbors_rotation_estimate_finished[neighbor] = false;
 		}
 	}
-	if(has_seperator_with_neighbor){
+	if(!has_seperator_with_neighbor){
 		changeOptimizerState(OptimizerState::Idle);
 	}
 }
@@ -1240,21 +1246,36 @@ bool distributedMapping::poseEstimationStoppingBarrier(){
 	if(in_turn && !pose_estimate_start){
 		pose_estimate_start = true;
 		// clear buffer
-		for(const auto& neighbor : neighbors_within_communication_range){
-			robots[neighbor].estimate_msg.pose_id.clear();
-			robots[neighbor].estimate_msg.estimate.clear();
-			robots[neighbor].estimate_msg.anchor_offset.clear();
+		RCLCPP_ERROR(this->get_logger(), "[poseEstimationStoppingBarrier] - try-catch loop for Error clearing vectors");
+		try {
+			for(const auto& neighbor : neighbors_within_communication_range) {
+				robots[neighbor].estimate_msg.pose_id.clear();
+				robots[neighbor].estimate_msg.estimate.clear();
+				robots[neighbor].estimate_msg.anchor_offset.clear();
+			}
+		} catch (const std::exception& e) {
+			std::cerr << "[poseEstimationStoppingBarrier] Error clearing vectors: " << e.what() << std::endl;
 		}
 		// extract pose estimate from each loop closure
-		for(const std::pair<Symbol, Symbol>& separator_symbols: optimizer->separatorsSymbols()){
-			int other_robot = (int)(separator_symbols.first.chr() - 'a');
+		RCLCPP_ERROR(this->get_logger(), "[poseEstimationStoppingBarrier] - try-catch loop for Error processing pose estimates");
+		try {
+			for(const std::pair<Symbol, Symbol>& separator_symbols: optimizer->separatorsSymbols()) {
+				int other_robot = (int)(separator_symbols.first.chr() - 'a');
+				
+				if (other_robot >= robots.size()) {
+					RCLCPP_ERROR(this->get_logger(), "[poseEstimationStoppingBarrier] Invalid robot index: %d", other_robot);
+					continue;
+				}
 
-			robots[other_robot].estimate_msg.pose_id.push_back(separator_symbols.second.index());
+				robots[other_robot].estimate_msg.pose_id.push_back(separator_symbols.second.index());
 
-			Vector pose_estimate = optimizer->linearizedPosesAt(separator_symbols.second.key());
-			for(int it = 0; it < 6; it++){
-				robots[other_robot].estimate_msg.estimate.push_back(pose_estimate[it]);
+				Vector pose_estimate = optimizer->linearizedPosesAt(separator_symbols.second.key());
+				for(int it = 0; it < 6; it++) {
+					robots[other_robot].estimate_msg.estimate.push_back(pose_estimate[it]);
+				}
 			}
+		} catch (const std::exception& e) {
+			std::cerr << "[poseEstimationStoppingBarrier] Error processing pose estimates: " << e.what() << std::endl;
 		}
 		// send pose estimate
 		for(int i = 0; i < optimization_order.size(); i++){
@@ -1262,21 +1283,25 @@ bool distributedMapping::poseEstimationStoppingBarrier(){
 			if(other_robot == robot_id){
 				break;
 			}
+			RCLCPP_ERROR(this->get_logger(), "[poseEstimationStoppingBarrier] - try-catch loop for Error processing pose estimate for robot");
+			try{
+				// Initialize anchor vector
+				std::vector<double> anchor_vector = {
+					anchor_offset.x(),
+					anchor_offset.y(),
+					anchor_offset.z()
+				};
 
-			// Initialize anchor vector
-            std::vector<double> anchor_vector = {
-                anchor_offset.x(),
-                anchor_offset.y(),
-                anchor_offset.z()
-            };
-
-            for (int j = 0; j < 3; j++) {
-                robots[other_robot].estimate_msg.anchor_offset.push_back(anchor_vector[j]);
-            }
-			robots[other_robot].estimate_msg.initialized = optimizer->isRobotInitialized();
-			robots[other_robot].estimate_msg.receiver_id = other_robot;
-			robots[other_robot].estimate_msg.estimation_done = pose_estimate_finished;
-			robots[robot_id].pub_neighbor_pose_estimates->publish(robots[other_robot].estimate_msg);
+				for (int j = 0; j < 3; j++) {
+					robots[other_robot].estimate_msg.anchor_offset.push_back(anchor_vector[j]);
+				}
+				robots[other_robot].estimate_msg.initialized = optimizer->isRobotInitialized();
+				robots[other_robot].estimate_msg.receiver_id = other_robot;
+				robots[other_robot].estimate_msg.estimation_done = pose_estimate_finished;
+				robots[robot_id].pub_neighbor_pose_estimates->publish(robots[other_robot].estimate_msg);
+			} catch (const std::exception& e) {
+				std::cerr << "[poseEstimationStoppingBarrier] Error processing pose estimate for robot " << other_robot << ": " << e.what() << std::endl;
+			}
 		}
 	}
 

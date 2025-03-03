@@ -379,34 +379,3 @@ void distributedMapping::performExternLoopClosure(){
 	loop_indexes.emplace(make_pair(loop_symbol0, loop_symbol1));
 	loop_indexes.emplace(make_pair(loop_symbol1, loop_symbol0));
 }
-
-/**
- * @brief Thread function for handling inter-robot loop closures.
- * 
- * This function runs in a separate thread and continuously checks for intea-loop closures using
- * performInterLoopClosure methods and then validates it using the performExternLoopClosure method, 
- * provided that intra- or inter-loop closure is enabled. It maintains a steady loop rate to balance 
- * processing and resource usage.
- */
-void distributedMapping::interLoopClosureThread(){
-    // Terminate the thread if neither intra-robot nor inter-robot loop closures are enabled.
-    if(!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_){
-        return;
-    }
-    RCLCPP_INFO(this->get_logger(), "+++++++++++++++++++++++++++++++++");
-	RCLCPP_INFO(this->get_logger(), "Running INTER_LOOP_CLOSURE_THREAD");
-
-    // Set the loop rate based on the configured loop closure processing interval.
-    rclcpp::Rate rate(1.0 / loop_closure_process_interval_);
-
-    // Main loop for detecting inter-robot loop closures.
-    while(rclcpp::ok()){
-        rate.sleep();  // Sleep to maintain the desired loop rate.
-
-        // Find inter-loop closures 
-        performInterLoopClosure();
-
-        // Validate the inter-robot-loop closure
-        performExternLoopClosure();
-    }
-}
