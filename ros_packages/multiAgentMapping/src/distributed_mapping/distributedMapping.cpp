@@ -437,9 +437,9 @@ void distributedMapping::processKeyframesAndPose(
 	Symbol current_symbol = Symbol('a' + robot_id, poses_number);
 	if(poses_number == 0){
 		RCLCPP_INFO(this->get_logger(), "[distributedMapping::processKeyframesAndPose] -> Adding prior factor!!");
-		// save prior pose value
-		robots[robot_id].prior_odom = pose_to;
-		// add prior factor to graph
+		// save piror pose value
+		robots[robot_id].piror_odom = pose_to;
+		// add piror factor to graph
 		auto prior_factor = PriorFactor<Pose3>(current_symbol, pose_to, prior_noise);
 		local_pose_graph_no_filtering->add(prior_factor);
 		isam2_graph.add(prior_factor);
@@ -779,7 +779,7 @@ void distributedMapping::publishTransformation(
 	static Symbol first_key((robot_id + 'a'), 0);
 
 	Pose3 first_pose = initial_values->at<Pose3>(first_key);
-	Pose3 old_first_pose = robots[robot_id].prior_odom;
+	Pose3 old_first_pose = robots[robot_id].piror_odom;
 	Pose3 pose_between = first_pose * old_first_pose.inverse();
 
 	// create a quaternion using tf2
@@ -867,11 +867,12 @@ void distributedMapping::updateOptimizer(){
 	RCLCPP_INFO(this->get_logger(), "priorOwner<%d> %d", robot_id, prior_owner);
 	if(robot_pair.first == robot_id){
 		static Key prior_key = Symbol('a' + robot_id, 0);
-		optimizer->addPrior(prior_key, robots[robot_id].prior_odom, prior_noise);
+		optimizer->addPrior(prior_key, robots[robot_id].piror_odom, prior_noise);
 		prior_added = true;
 	}
 
 	// check for graph connectivity
+	RCLCPP_INFO(this->get_logger(), "Checking graph connectivity <%d>", robot_id);
 	neighboring_robots = optimizer->getNeighboringChars();
 	if(neighboring_robots.size() > 0){
 		graph_disconnected = false;
@@ -888,6 +889,7 @@ void distributedMapping::updateOptimizer(){
 	}
 	if(!has_seperator_with_neighbor){
 		changeOptimizerState(OptimizerState::Idle);
+		RCLCPP_INFO(this->get_logger(), "Changed Optimizer State <%d>", robot_id);
 	}
 }
 
@@ -897,6 +899,11 @@ void distributedMapping::outliersFiltering(){
 	{
 		measurements_accepted_num = 0;
 		measurements_rejected_num = 0;
+
+		RCLCPP_INFO(this->get_logger(), 
+			"[outliersFiltering] Processing %zu neighbors within communication range", 
+			neighbors_within_communication_range.size());
+
 		// perform pairwise consistency maximization for each pair robot 
 		for(const auto& neighbor : neighbors_within_communication_range){
 			if(neighbor == robot_id || pose_estimates_from_neighbors.find(neighbor) == pose_estimates_from_neighbors.end()){
@@ -919,6 +926,10 @@ void distributedMapping::outliersFiltering(){
 					loop_closures_transforms.transforms.insert(transform);
 				}
 			}
+
+			RCLCPP_INFO(this->get_logger(), 
+				"[outliersFiltering] Found loop closure transforms between robots %d and %d", robot_id, neighbor);
+
 			auto inter_robot_measurements = robot_measurements::InterRobotMeasurements(
 				loop_closures_transforms, optimizer->robotName(), (char)neighbor + 97);
 
@@ -926,15 +937,45 @@ void distributedMapping::outliersFiltering(){
 			auto local_info = robot_measurements::RobotLocalMap(
 				pose_estimates_from_neighbors.at(robot_id), robot_local_map.getTransforms(), robot_local_map.getLoopClosures());
 
+			RCLCPP_INFO(this->get_logger(), 
+				"[outliersFiltering] Creating global map for PCM between robots %d and %d", 
+				robot_id, neighbor);
+
 			// create global map
 			auto globalMap = global_map::GlobalMap(local_info, neighbor_local_info,
 				inter_robot_measurements, pcm_threshold_, use_heuristics_);
+			
+			RCLCPP_INFO(this->get_logger(), 
+				"[outliersFiltering] Created global map for PCM between robots %d and %d", 
+				robot_id, neighbor);
 
+			// Execute PCM with error handling
+			std::pair<std::vector<int>, int> max_clique_info;
+			try {
+				max_clique_info = globalMap.pairwiseConsistencyMaximization();
+			} catch (const std::exception& e) {
+				RCLCPP_ERROR(this->get_logger(), 
+					"[outliersFiltering] PCM failed for robots %d and %d: %s", 
+					robot_id, neighbor, e.what());
+				continue;
+			}
 			// pairwise consistency maximization
-			auto max_clique_info = globalMap.pairwiseConsistencyMaximization();
+			// auto max_clique_info = globalMap.pairwiseConsistencyMaximization();
+			RCLCPP_INFO(this->get_logger(), "max_clique_info");
 			std::vector<int> max_clique = max_clique_info.first;
+			RCLCPP_INFO(this->get_logger(), "max_clique_info.first");
 			measurements_accepted_num += max_clique.size();
+			RCLCPP_INFO(this->get_logger(), "max_clique_info.size");
 			measurements_rejected_num += max_clique_info.second;
+			RCLCPP_INFO(this->get_logger(), "max_clique_info.second");
+
+			RCLCPP_INFO(this->get_logger(), 
+				"[outliersFiltering] PCM Results - Robot %d with %d:\n"
+				"  - Max clique size: %zu\n"
+				"  - Accepted measurements: %d\n"
+				"  - Rejected measurements: %d",
+				robot_id, neighbor, max_clique.size(), 
+				measurements_accepted_num, measurements_rejected_num);
 
 			// retrieve indexes of rejected measurements
 			auto loopclosures_ids = optimizer->loopclosureEdge();
@@ -961,6 +1002,7 @@ void distributedMapping::outliersFiltering(){
 			}
 
 			// remove measurements not in the max clique
+			RCLCPP_INFO(this->get_logger(), "remove measurements not in the max clique");
 			int number_loopclosure_ids_removed = 0;
 			for(const auto& index : rejected_loopclosure_ids){
 				auto factor_id = loopclosures_ids[index] - number_loopclosure_ids_removed;
@@ -970,6 +1012,7 @@ void distributedMapping::outliersFiltering(){
 			}
 
 			// Update loopclosure ids
+			RCLCPP_INFO(this->get_logger(), "Update loopclosure ids");
 			std::vector<size_t> new_loopclosure_ids;
 			new_loopclosure_ids.reserve(10000);
 			int number_of_edges = optimizer->currentGraph().size();
@@ -986,7 +1029,7 @@ void distributedMapping::outliersFiltering(){
 				}
 			}
 			optimizer->setloopclosureIds(new_loopclosure_ids);
-
+			RCLCPP_INFO(this->get_logger(), "Update loopclosure ids done");
 			// save accepted pair
 			for(const auto& accepted_pair : accepted_key_pairs){
 				accepted_keys.insert(accepted_pair);

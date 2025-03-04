@@ -1,0 +1,29 @@
+name: b
+from_domain: 2
+to_domain: 0
+topics:
+  /b/distributedMapping/keyposeCloud:
+    type: sensor_msgs/msg/PointCloud2
+    qos:
+      reliability: reliable
+      durability: volatile
+      history: keep_last
+      depth: 1
+  /b/distributedMapping/loopInfo:
+    type: multi_agent_mapping/msg/LoopInfo
+    qos:
+      reliability: reliable
+      durability: volatile
+      history: keep_last
+      depth: 5
+  /b/lio_sam/mapping/odometry:
+    type: nav_msgs/msg/Odometry
+    qos:
+      reliability: best_effort
+      durability: volatile
+      history: keep_last
+      depth: 50
+      deadline: 0
+      lifespan: 0
+      liveliness: automatic
+      liveliness_lease_duration: 0

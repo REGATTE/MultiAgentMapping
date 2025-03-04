@@ -102,19 +102,17 @@ private:
             constraints.color.a = 1;
 
             pcl::PointXYZI pose_3d;
-            int robot0, robot1, index0, index1;
-            gtsam::Symbol key0, key1;
-
-            for (auto it = loop_indexs_.begin(); it != loop_indexs_.end(); ++it)
+            for(const auto& loop_pair : loop_indexs_)
             {
-                key0 = it->first;
-                key1 = it->second;
-                robot0 = key0.chr() - 'a';
-                robot1 = key1.chr() - 'a';
-                index0 = key0.index();
-                index1 = key1.index();
+                gtsam::Symbol key0 = loop_pair.first;
+                gtsam::Symbol key1 = loop_pair.second;
+                int robot0 = key0.chr() - 'a';
+                int robot1 = key1.chr() - 'a';
+                int index0 = key0.index();
+                int index1 = key1.index();
 
-                if (index0 >= cloud_queue_vec_[robot0].size() || index1 >= cloud_queue_vec_[robot1].size())
+                if(index0 >= cloud_queue_vec_[robot0].size() || 
+                   index1 >= cloud_queue_vec_[robot1].size())
                 {
                     continue;
                 }
@@ -176,6 +174,7 @@ int main(int argc, char **argv)
 {
     rclcpp::init(argc, argv);
     auto node = std::make_shared<LoopVisualizationNode>();
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Global Loop Visualization Node Started");
     rclcpp::spin(node);
     rclcpp::shutdown();
     return 0;
