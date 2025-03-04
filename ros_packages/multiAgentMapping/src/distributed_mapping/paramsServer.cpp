@@ -1,6 +1,7 @@
 #include "multiAgentMapping/distributed_mapping/paramsServer.hpp"
 
-paramsServer::paramsServer() : Node("params_server_node"){
+paramsServer::paramsServer(const std::string& node_name, const rclcpp::NodeOptions& options)
+    : Node(node_name, options){
     // robot info
     std::string robot_namespace = this->get_namespace();
     if(robot_namespace.length() != 2){
@@ -138,6 +139,12 @@ paramsServer::paramsServer() : Node("params_server_node"){
 
     this->declare_parameter<std::string>(robot_namespace + "/save_directory", "/distributed_mapping_output");
     this->get_parameter(robot_namespace + "/save_directory", save_directory_);
+}
+
+paramsServer::paramsServer()
+    : Node("params_server")
+{
+    // Initialization code
 }
 
 // convert gtsam pose3 to eigen affine3f

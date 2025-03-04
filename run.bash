@@ -25,7 +25,7 @@ gnome-terminal -- bash -c "
 echo "Launching domain bridge for a to b"
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=1; 
-    ros2 run domain_bridge domain_bridge '/home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/DomainBridge/a_to_b.yaml';
+    ros2 run domain_bridge domain_bridge /home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/DomainBridge/a_to_b.yaml;
     exec bash
 "
 
@@ -57,7 +57,7 @@ gnome-terminal -- bash -c "
 echo "Launching domain bridge for a to b"
 gnome-terminal -- bash -c "
     export ROS_DOMAIN_ID=2; 
-    ros2 run domain_bridge domain_bridge '/home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/DomainBridge/b_to_a.yaml';
+    ros2 run domain_bridge domain_bridge /home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/DomainBridge/b_to_a.yaml;
     exec bash
 "
 

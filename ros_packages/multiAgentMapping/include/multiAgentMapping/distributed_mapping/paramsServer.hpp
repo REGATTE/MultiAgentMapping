@@ -96,6 +96,7 @@ struct singleRobot {
 
 class paramsServer : public rclcpp::Node {
     public:
+        paramsServer(const std::string& node_name, const rclcpp::NodeOptions& options);
         paramsServer();
         Eigen::Affine3f gtsamPoseToAffine3f(
             gtsam::Pose3 pose

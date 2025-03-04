@@ -191,32 +191,3 @@ void distributedMapping::performDescriptorBasedIntraLoopClosure()
 
 	calculateTransformation(loop_key0, loop_key1);
 }
-
-/**
- * @brief Thread function for handling intra-robot loop closures.
- * 
- * This function runs in a separate thread and continuously checks for intra-loop closures using
- * radius-based search methods, provided that intra- or inter-loop closure
- * is enabled. It maintains a steady loop rate to balance processing and resource usage.
- */
-void distributedMapping::intraLoopClosureThread(){
-    // Terminate the thread if neither intra-robot nor inter-robot loop closures are enabled.
-    if(!intra_robot_loop_closure_enable_ && !inter_robot_loop_closure_enable_){
-        return;
-    }
-	RCLCPP_INFO(this->get_logger(), "+++++++++++++++++++++++++++++++++");
-	RCLCPP_INFO(this->get_logger(), "Running INTRA_LOOP_CLOSURE_THREAD");
-
-    // Set the loop rate based on the configured loop closure processing interval.
-    rclcpp::Rate rate(1.0 / loop_closure_process_interval_);
-
-    // Main loop for detecting intra-robot loop closures.
-    while(rclcpp::ok()){
-        rate.sleep();  // Sleep to maintain the desired loop rate.
-
-        // Find intra-loop closures by searching for nearby keyframes within a specified radius.
-        performRadiusSearchIntraLoopClosure();
-
-		performDescriptorBasedIntraLoopClosure();
-    }
-}

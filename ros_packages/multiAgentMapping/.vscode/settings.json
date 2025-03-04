@@ -81,6 +81,7 @@
         "stack": "cpp",
         "__node_handle": "cpp",
         "core": "cpp",
-        "__functional_03": "cpp"
+        "__functional_03": "cpp",
+        "future": "cpp"
     }
 }

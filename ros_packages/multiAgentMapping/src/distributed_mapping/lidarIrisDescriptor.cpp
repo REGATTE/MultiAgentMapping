@@ -45,45 +45,189 @@ lidar_iris_descriptor::lidar_iris_descriptor (
 
 lidar_iris_descriptor::~lidar_iris_descriptor(){}
 
+// Function to extract unique elevation angles from the LiDAR point cloud
+std::vector<float> lidar_iris_descriptor::extractUniqueElevationAngles(const pcl::PointCloud<pcl::PointXYZI>& cloud) {
+    std::set<float> unique_angles;
+    for (const auto& point : cloud) {
+        float elevation = atan2(point.z, sqrt(point.x * point.x + point.y * point.y)) * 180.0 / M_PI;
+        unique_angles.insert(elevation);
+    }
+    
+    // Convert set to vector and sort it in descending order
+    std::vector<float> sorted_angles(unique_angles.begin(), unique_angles.end());
+    std::sort(sorted_angles.begin(), sorted_angles.end(), std::greater<float>());
+    
+    return sorted_angles;
+}
+
+// Function to find the closest elevation layer index from dynamically extracted angles
+int lidar_iris_descriptor::findClosestElevationLayer(float elevation, const std::vector<float>& elevation_layers) {
+    float min_diff = std::abs(elevation_layers[0] - elevation);
+    int closest_index = 0;
+
+    for (size_t i = 1; i < elevation_layers.size(); i++) {
+        float diff = std::abs(elevation_layers[i] - elevation);
+        if (diff < min_diff) {
+            min_diff = diff;
+            closest_index = i;
+        }
+    }
+    return closest_index;
+
+}
+
+/**
+ * @brief Generates an iris image and descriptor from a LiDAR point cloud
+ * 
+ * @param cloud Input LiDAR point cloud
+ * @return std::pair<Eigen::VectorXf, cv::Mat1b> Descriptor vector and iris image
+ * 
+ * This function:
+ * 1. Creates a 2D intensity image from the 3D point cloud
+ * 2. Accumulates and normalizes point intensities
+ * 3. Generates statistics for verification
+ * 4. Creates both the iris image and row key descriptor
+ * 5. Performs extensive validation of the generated data
+ */
 std::pair<Eigen::VectorXf, cv::Mat1b> lidar_iris_descriptor::getIris(
-    const pcl::PointCloud<pcl::PointXYZI> &cloud
-){
+    const pcl::PointCloud<pcl::PointXYZI>& cloud
+) {
+    cv::Mat1f intensity_accumulator = cv::Mat1f::zeros(rows_, columns_);
+    cv::Mat1i count_accumulator = cv::Mat1i::zeros(rows_, columns_);
     cv::Mat1b iris_image = cv::Mat1b::zeros(rows_, columns_);
     Eigen::MatrixXf iris_row_key_matrix = Eigen::MatrixXf::Zero(rows_, columns_);
-    // VLS 128 lidar logic
-    if(n_scan_ == 128){ 
-        for(auto p : cloud.points){
-            // compute XY-plane distance
-            float dis = sqrt(p.data[0] * p.data[0] + p.data[1] * p.data[1]);
-
-            // vertical angle remapping: [-25 to +15] -> [0, 40]
-            float arc = (atan2(p.data[2], dis) * 180.0f / M_PI) + 25;
-
-            // horizontal angle remapping [-180, +180] -> [0, 360]
-            float yaw = (atan2(p.data[1], p.data[0]) * 180.0f / M_PI) + 180;
-
-            // discrtize into bins
-            int Q_dis = std::min(std::max((int)floor(dis), 0), (rows_ - 1));
-            int Q_arc = std::min(std::max((int)floor(arc / 5.0f), 0), 7);  // 8 bins, 5° each
-            int Q_yaw = std::min(std::max((int)floor(yaw + 0.5), 0), (columns_ - 1));
-
-            // update iris image with bit-wise encoding
-            iris_image.at<uint8_t>(Q_dis, Q_yaw) |= (1 << Q_arc);
-
-            // Update the row key matrix to store the maximum height (z-value)
-            if(iris_row_key_matrix(Q_dis, Q_yaw) < p.data[2]){
-                iris_row_key_matrix(Q_dis, Q_yaw) = p.data[2];
-            }
-        }
-    } else {
-        std::cout << "[LiDAR Iris Descriptor] Error : Only n_scan = 128 supported" << std::endl;
+    Eigen::VectorXi row_counts = Eigen::VectorXi::Zero(rows_);
+    
+    if (cloud.empty()) {
+        std::cerr << "[ERROR] Input LiDAR cloud is empty!" << std::endl;
+        return std::make_pair(Eigen::VectorXf::Zero(rows_), cv::Mat1b::zeros(rows_, columns_));
     }
 
-    // extract rowkey
+    // First pass: collect statistics and accumulate intensities
+    float min_intensity = std::numeric_limits<float>::max();
+    float max_intensity = std::numeric_limits<float>::min();
+    float sum_intensity = 0;
+    std::vector<float> all_intensities;
+    all_intensities.reserve(cloud.size());
+
+    std::vector<float> elevation_layers = extractUniqueElevationAngles(cloud);
+
+    for (const auto& point : cloud) {
+        float azimuth = atan2(point.y, point.x) * 180.0 / M_PI;
+        float elevation = atan2(point.z, sqrt(point.x * point.x + point.y * point.y)) * 180.0 / M_PI;
+
+        int row = findClosestElevationLayer(elevation, elevation_layers);
+        int col = floor((azimuth + 180.0) / (360.0 / columns_));
+
+        if (row < 0 || row >= rows_ || col < 0 || col >= columns_) continue;
+
+        // Accumulate intensities and counts
+        intensity_accumulator.at<float>(row, col) += point.intensity;
+        count_accumulator.at<int>(row, col)++;
+        
+        // Update statistics
+        min_intensity = std::min(min_intensity, point.intensity);
+        max_intensity = std::max(max_intensity, point.intensity);
+        sum_intensity += point.intensity;
+        all_intensities.push_back(point.intensity);
+
+        // Update row key matrix
+        iris_row_key_matrix(row, col) += point.intensity;
+        row_counts(row)++;
+    }
+
+    // Calculate mean intensity
+    float mean_intensity = sum_intensity / cloud.size();
+    
+    // Calculate median intensity
+    std::sort(all_intensities.begin(), all_intensities.end());
+    float median_intensity = all_intensities[all_intensities.size()/2];
+
+    // Mode calculation
+    std::map<int, int> intensity_histogram;
+    for (const auto& intensity : all_intensities) {
+        intensity_histogram[static_cast<int>(intensity)]++;
+    }
+    int mode_intensity = std::max_element(
+        intensity_histogram.begin(), intensity_histogram.end(),
+        [](const auto& p1, const auto& p2) { return p1.second < p2.second; }
+    )->first;
+
+    // Log intensity statistics
+    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), 
+        "Intensity Statistics - Mean: %.3f, Median: %.3f, Mode: %.3f, Min: %.3f, Max: %.3f",
+        mean_intensity, median_intensity, static_cast<float>(mode_intensity), min_intensity, max_intensity);
+
+    // Create iris image from accumulated intensities
+    for (int i = 0; i < rows_; i++) {
+        for (int j = 0; j < columns_; j++) {
+            if (count_accumulator.at<int>(i, j) > 0) {
+                float avg_intensity = intensity_accumulator.at<float>(i, j) / count_accumulator.at<int>(i, j);
+                // Normalize to 0-255 range
+                iris_image.at<uint8_t>(i, j) = static_cast<uint8_t>((avg_intensity - min_intensity) * 255.0 / (max_intensity - min_intensity));
+            }
+        }
+    }
+
+    // Calculate iris image statistics
+    int non_zero_pixels = cv::countNonZero(iris_image);
+    float sparsity = static_cast<float>(non_zero_pixels) / (rows_ * columns_);
+    
+    // Calculate min, max, mean of non-zero values
+    double min_val, max_val;
+    cv::Point min_loc, max_loc;
+    cv::minMaxLoc(iris_image, &min_val, &max_val, &min_loc, &max_loc);
+    
+    // Calculate mean of non-zero values
+    cv::Scalar mean_val = cv::mean(iris_image, iris_image > 0);
+    
+    // Sample values from different regions
+    std::stringstream ss;
+    ss << "Iris Image Values Sample:\n";
+    ss << "  Top-left (0,0): " << (int)iris_image.at<uint8_t>(0,0) << "\n";
+    ss << "  Top-right (0," << columns_-1 << "): " << (int)iris_image.at<uint8_t>(0,columns_-1) << "\n";
+    ss << "  Center (" << rows_/2 << "," << columns_/2 << "): " << (int)iris_image.at<uint8_t>(rows_/2,columns_/2) << "\n";
+    ss << "  Bottom-left (" << rows_-1 << ",0): " << (int)iris_image.at<uint8_t>(rows_-1,0) << "\n";
+    ss << "  Bottom-right (" << rows_-1 << "," << columns_-1 << "): " << (int)iris_image.at<uint8_t>(rows_-1,columns_-1);
+
+    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), 
+        "Iris Image Detailed Statistics:\n"
+        "  - Size: %dx%d\n"
+        "  - Non-zero pixels: %d (%.1f%%)\n"
+        "  - Value range: %.1f to %.1f\n"
+        "  - Mean of non-zero values: %.1f\n"
+        "  - %s",
+        rows_, columns_,
+        non_zero_pixels, sparsity * 100.0,
+        min_val, max_val,
+        mean_val[0],
+        ss.str().c_str());
+
+    // Log histogram of values
+    std::vector<int> histogram(256, 0);
+    for(int i = 0; i < rows_; i++) {
+        for(int j = 0; j < columns_; j++) {
+            histogram[iris_image.at<uint8_t>(i,j)]++;
+        }
+    }
+    
+    std::stringstream hist_ss;
+    hist_ss << "Value distribution (in ranges):\n";
+    hist_ss << "  0: " << histogram[0] << " pixels\n";  // zeros
+    hist_ss << "  1-50: " << std::accumulate(histogram.begin()+1, histogram.begin()+51, 0) << " pixels\n";
+    hist_ss << "  51-100: " << std::accumulate(histogram.begin()+51, histogram.begin()+101, 0) << " pixels\n";
+    hist_ss << "  101-150: " << std::accumulate(histogram.begin()+101, histogram.begin()+151, 0) << " pixels\n";
+    hist_ss << "  151-200: " << std::accumulate(histogram.begin()+151, histogram.begin()+201, 0) << " pixels\n";
+    hist_ss << "  201-255: " << std::accumulate(histogram.begin()+201, histogram.end(), 0) << " pixels";
+
+    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), "%s", hist_ss.str().c_str());
+
+    // Create and normalize the row key descriptor
     Eigen::VectorXf rowkey = Eigen::VectorXf::Zero(rows_);
-    for (int i = 0; i < iris_row_key_matrix.rows(); i++){
-        Eigen::VectorXf curr_row = iris_row_key_matrix.row(i);
-        rowkey(i) = curr_row.mean();
+    for (int i = 0; i < rows_; i++) {
+        if (row_counts(i) > 0) {
+            rowkey(i) = iris_row_key_matrix.row(i).sum() / (row_counts(i) * mean_intensity + 1e-6);
+        }
     }
 
     return std::make_pair(rowkey, iris_image);
@@ -775,34 +919,108 @@ void lidar_iris_descriptor::save(
 	iris_feature_index_pairs.push_back(std::make_pair(robot,index)); //index
 }
 
+/**
+ * @brief Generates and saves a descriptor from a LiDAR point cloud scan
+ * 
+ * @param scan The input LiDAR point cloud
+ * @param robot Robot ID for the descriptor
+ * @param index Keyframe index for the descriptor
+ * @return std::vector<float> Combined iris image and descriptor data
+ * 
+ * This function:
+ * 1. Generates an iris image from the point cloud
+ * 2. Creates a descriptor from the iris image
+ * 3. Combines and normalizes the data
+ * 4. Saves the descriptor for later use
+ * 5. Returns the combined data for network transmission
+ */
 std::vector<float> lidar_iris_descriptor::makeAndSaveDescriptorAndKey(
-	const pcl::PointCloud<pcl::PointXYZI>& scan,
-	const int8_t robot,
-	const int index)
-{
-	auto scan_iris_image = getIris(scan);
-	save(scan_iris_image.second, scan_iris_image.first, robot, index);
+    const pcl::PointCloud<pcl::PointXYZI>& scan,
+    const int8_t robot,
+    const int index
+) {
+    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), 
+        "[DEBUG] Starting makeAndSaveDescriptorAndKey for robot %d, index %d", 
+        robot, index);
 
-	std::vector<float> descriptor_msg_data;
-	for(int row_idx = 0; row_idx < scan_iris_image.second.rows; row_idx++)
-	{
-		for(int col_idx = 0; col_idx < scan_iris_image.second.cols; col_idx++)
-		{
-			descriptor_msg_data.push_back(scan_iris_image.second(row_idx, col_idx));
-		}
-	}
+    // Get iris image and descriptor
+    auto iris_result = getIris(scan);
+    Eigen::VectorXf descriptor = iris_result.first;
+    cv::Mat1b iris_image = iris_result.second;
 
-	for(int row_idx = 0; row_idx < scan_iris_image.second.rows; row_idx++)
-	{
-		descriptor_msg_data.push_back(scan_iris_image.first(row_idx));
-	}
-	
-	return descriptor_msg_data;
+    // Verify descriptor for NaN values
+    for(int i = 0; i < descriptor.size(); i++) {
+        if(std::isnan(descriptor(i))) {
+            RCLCPP_WARN(rclcpp::get_logger("lidar_iris_descriptor"), 
+                "NaN detected in descriptor at index %d, replacing with 0", i);
+            descriptor(i) = 0.0f;
+        }
+    }
+
+    // Reserve space for combined data
+    std::vector<float> combined_data;
+    combined_data.reserve(rows_ * columns_ + descriptor.size());
+
+    // Copy and verify iris image data
+    int non_zero_count = 0;
+    float max_val = 0.0f;
+    for(int i = 0; i < rows_; i++) {
+        for(int j = 0; j < columns_; j++) {
+            float normalized_val = static_cast<float>(iris_image.at<uint8_t>(i,j)) / 255.0f;
+            if(normalized_val > 0.0f) {
+                non_zero_count++;
+                max_val = std::max(max_val, normalized_val);
+            }
+            combined_data.push_back(normalized_val);
+        }
+    }
+
+    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), 
+        "Iris image transfer stats:\n"
+        "  - Non-zero values copied: %d\n"
+        "  - Maximum normalized value: %.3f",
+        non_zero_count, max_val);
+
+    // Sample some non-zero values from the iris image
+    std::stringstream ss;
+    ss << "Sample of non-zero iris values:";
+    int samples = 0;
+    for(size_t i = 0; i < combined_data.size() && samples < 5; i++) {
+        if(combined_data[i] > 0.0f) {
+            ss << " " << combined_data[i];
+            samples++;
+        }
+    }
+    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), "%s", ss.str().c_str());
+
+    // Copy descriptor data
+    for(int i = 0; i < descriptor.size(); i++) {
+        combined_data.push_back(descriptor(i));
+    }
+
+    // Save descriptor (after NaN check)
+    saveDescriptorAndKey(descriptor.data(), robot, index);
+
+    // Verify final data
+    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), 
+        "Final data verification:\n"
+        "  - Combined data size: %zu\n"
+        "  - First iris value > 0: %.6f (at index %zu)\n"
+        "  - First descriptor value: %.6f",
+        combined_data.size(),
+        *std::find_if(combined_data.begin(), combined_data.begin() + rows_ * columns_,
+                     [](float f) { return f > 0.0f; }),
+        std::distance(combined_data.begin(), 
+                     std::find_if(combined_data.begin(), combined_data.begin() + rows_ * columns_,
+                                 [](float f) { return f > 0.0f; })),
+        combined_data[rows_ * columns_]);
+
+    return combined_data;
 }
-
 std::pair<int, float> lidar_iris_descriptor::detectIntraLoopClosureID(
 	const int cur_ptr)
 {
+    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), "Detecting intra-loop-closure id using descriptor data");
 	std::pair<int, float> result {-1, 0.0};
 	Eigen::VectorXf iris_rowkey = iris_rowkeys[id_][cur_ptr]; // current query rowkey
 	lidar_iris_descriptor::featureDesc iris_feature = iris_features[id_][cur_ptr]; // current feature
@@ -867,14 +1085,14 @@ std::pair<int, float> lidar_iris_descriptor::detectIntraLoopClosureID(
 	{
 		result.first = min_index;
 		result.second = min_bias;
-		std::cout << "\033[1;33m[Iris Intra Loop<" << id_ << ">] btn " << cur_ptr 
-          << " and " << min_index << ". Dis: " << std::fixed << std::setprecision(2) 
+		std::cout << "\033[1;33m[Iris Intra Loop<robot id: " << id_ << ">] between pose: " << cur_ptr 
+          << " and pose :" << min_index << ". Dis: " << std::fixed << std::setprecision(2) 
           << min_distance << ".\033[0m" << std::endl;
 	}
 	else
 	{
-		std::cout << "\033[1;33m[Iris Intra Not loop<" << id_ << ">] btn " << cur_ptr 
-          << " and " << min_index << ". Dis: " << std::fixed << std::setprecision(2) 
+		std::cout << "\033[1;33m[Iris Intra Not loop<robot id: " << id_ << ">] between pose:" << cur_ptr 
+          << " and pose:" << min_index << ". Dis: " << std::fixed << std::setprecision(2) 
           << min_distance << ".\033[0m" << std::endl;
 	}
 	return result;

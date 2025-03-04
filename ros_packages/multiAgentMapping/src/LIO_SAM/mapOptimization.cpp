@@ -62,7 +62,7 @@ public:
     Values isamCurrentEstimate;
     Eigen::MatrixXd poseCovariance;
 
-    distributedMapping dist_mapping;
+    std::shared_ptr<distributedMapping> dist_mapping;
 
     rclcpp::Publisher<sensor_msgs::msg::PointCloud2>::SharedPtr pubLaserCloudSurround;
     rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr pubLaserOdometryGlobal;
@@ -162,6 +162,11 @@ public:
         parameters.relinearizeThreshold = 0.1;
         parameters.relinearizeSkip = 1;
         isam = new ISAM2(parameters);
+
+        auto dist_options = rclcpp::NodeOptions()
+            .use_intra_process_comms(true)
+            .context(options.context());
+        dist_mapping = std::make_shared<distributedMapping>(dist_options);
 
         std::string topicPrefix = std::string(this->get_namespace()) + "/lio_sam/mapping/";
 
@@ -331,7 +336,7 @@ public:
             gtsam::Pose3 pose_to = Pose3(
 				Rot3::RzRyRx(transformTobeMapped[0], transformTobeMapped[1], transformTobeMapped[2]),
 				Point3(transformTobeMapped[3], transformTobeMapped[4], transformTobeMapped[5]));
-            if(dist_mapping.saveFrame(pose_to)){
+            if(dist_mapping->saveFrame(pose_to)){
                 // keyframe
                 RCLCPP_INFO(this->get_logger(), "========================================");
                 RCLCPP_INFO(this->get_logger(), "[mapOptimization - saveFrame] -> Saving new keyframe");
@@ -339,9 +344,9 @@ public:
                 pcl::fromROSMsg(msgIn->cloud_deskewed, *keyframe);
 
                 RCLCPP_INFO(this->get_logger(), "[mapOptimization - processKeyframesAndPose] -> Processing new keyframe");
-                dist_mapping.processKeyframesAndPose(pose_to, keyframe, timeLaserInfoStamp);
+                dist_mapping->processKeyframesAndPose(pose_to, keyframe, timeLaserInfoStamp);
 
-                if(dist_mapping.updatePoses()){
+                if(dist_mapping->updatePoses()){
                     // clear map cache
                     laserCloudMapContainer.clear();
                     RCLCPP_INFO(this->get_logger(), "[mapOptimization] -> IntraRobot Loop closure Detected");
@@ -350,7 +355,7 @@ public:
                 }
 
                 // save updated transform
-                gtsam::Pose3 latest_estimate = dist_mapping.getLatestEstimate();
+                gtsam::Pose3 latest_estimate = dist_mapping->getLatestEstimate();
                 transformTobeMapped[0] = latest_estimate.rotation().roll();
                 transformTobeMapped[1] = latest_estimate.rotation().pitch();
                 transformTobeMapped[2] = latest_estimate.rotation().yaw();
@@ -358,9 +363,9 @@ public:
                 transformTobeMapped[4] = latest_estimate.translation().y();
                 transformTobeMapped[5] = latest_estimate.translation().z();
 
-                dist_mapping.makeIrisDescriptor();
+                dist_mapping->makeIrisDescriptor();
                 RCLCPP_INFO(this->get_logger(), "[mapOptimization] -> Built descriptors from keyframes");
-                dist_mapping.publishPath();
+                dist_mapping->publishPath();
                 RCLCPP_INFO(this->get_logger(), "[mapOptimization] -> Publishing path from keyposes");
 
                 // save all the received edge and surf points
@@ -375,7 +380,7 @@ public:
                 RCLCPP_INFO(this->get_logger(), "[mapOptimization] -> Saving keyframe cloud");
             }
 
-            dist_mapping.publishTransformation(timeLaserInfoStamp);
+            dist_mapping->publishTransformation(timeLaserInfoStamp);
 
             publishOdometry();
         }
@@ -478,7 +483,7 @@ public:
 
         static Eigen::Affine3f lastImuTransformation;
         // initialization
-        if (dist_mapping.getLocalKeyposesCloud3D()->empty())
+        if (dist_mapping->getLocalKeyposesCloud3D()->empty())
         {
             transformTobeMapped[0] = cloudInfo.imu_roll_init;
             transformTobeMapped[1] = cloudInfo.imu_pitch_init;
@@ -541,12 +546,12 @@ public:
         std::vector<float> pointSearchSqDis;
 
         // extract all the nearby key poses and downsample them
-        kdtreeSurroundingKeyPoses->setInputCloud(dist_mapping.getLocalKeyposesCloud3D()); // create kd-tree
-        kdtreeSurroundingKeyPoses->radiusSearch(dist_mapping.getLocalKeyposesCloud3D()->back(), (double)surroundingKeyframeSearchRadius, pointSearchInd, pointSearchSqDis);
+        kdtreeSurroundingKeyPoses->setInputCloud(dist_mapping->getLocalKeyposesCloud3D()); // create kd-tree
+        kdtreeSurroundingKeyPoses->radiusSearch(dist_mapping->getLocalKeyposesCloud3D()->back(), (double)surroundingKeyframeSearchRadius, pointSearchInd, pointSearchSqDis);
         for (int i = 0; i < (int)pointSearchInd.size(); ++i)
         {
             int id = pointSearchInd[i];
-            surroundingKeyPoses->push_back(dist_mapping.getLocalKeyposesCloud3D()->points[id]);
+            surroundingKeyPoses->push_back(dist_mapping->getLocalKeyposesCloud3D()->points[id]);
         }
 
         downSizeFilterSurroundingKeyPoses.setInputCloud(surroundingKeyPoses);
@@ -554,15 +559,15 @@ public:
         for(auto& pt : surroundingKeyPosesDS->points)
         {
             kdtreeSurroundingKeyPoses->nearestKSearch(pt, 1, pointSearchInd, pointSearchSqDis);
-            pt.intensity = dist_mapping.getLocalKeyposesCloud3D()->points[pointSearchInd[0]].intensity;
+            pt.intensity = dist_mapping->getLocalKeyposesCloud3D()->points[pointSearchInd[0]].intensity;
         }
 
         // also extract some latest key frames in case the robot rotates in one position
-        int numPoses = dist_mapping.getLocalKeyposesCloud3D()->size();
+        int numPoses = dist_mapping->getLocalKeyposesCloud3D()->size();
         for (int i = numPoses-1; i >= 0; --i)
         {
-            if (timeLaserInfoCur - dist_mapping.getLocalKeyposesCloud6D()->points[i].time < 10.0)
-                surroundingKeyPosesDS->push_back(dist_mapping.getLocalKeyposesCloud3D()->points[i]);
+            if (timeLaserInfoCur - dist_mapping->getLocalKeyposesCloud6D()->points[i].time < 10.0)
+                surroundingKeyPosesDS->push_back(dist_mapping->getLocalKeyposesCloud3D()->points[i]);
             else
                 break;
         }
@@ -577,7 +582,7 @@ public:
         laserCloudSurfFromMap->clear(); 
         for (int i = 0; i < (int)cloudToExtract->size(); ++i)
         {
-            if (pointDistance(cloudToExtract->points[i], dist_mapping.getLocalKeyposesCloud3D()->back()) > surroundingKeyframeSearchRadius)
+            if (pointDistance(cloudToExtract->points[i], dist_mapping->getLocalKeyposesCloud3D()->back()) > surroundingKeyframeSearchRadius)
                 continue;
 
             int thisKeyInd = (int)cloudToExtract->points[i].intensity;
@@ -588,8 +593,8 @@ public:
                 *laserCloudSurfFromMap   += laserCloudMapContainer[thisKeyInd].second;
             } else {
                 // transformed cloud not available
-                pcl::PointCloud<PointType> laserCloudCornerTemp = *transformPointCloud(cornerCloudKeyFrames[thisKeyInd],  &dist_mapping.getLocalKeyposesCloud6D()->points[thisKeyInd]);
-                pcl::PointCloud<PointType> laserCloudSurfTemp = *transformPointCloud(surfCloudKeyFrames[thisKeyInd],    &dist_mapping.getLocalKeyposesCloud6D()->points[thisKeyInd]);
+                pcl::PointCloud<PointType> laserCloudCornerTemp = *transformPointCloud(cornerCloudKeyFrames[thisKeyInd],  &dist_mapping->getLocalKeyposesCloud6D()->points[thisKeyInd]);
+                pcl::PointCloud<PointType> laserCloudSurfTemp = *transformPointCloud(surfCloudKeyFrames[thisKeyInd],    &dist_mapping->getLocalKeyposesCloud6D()->points[thisKeyInd]);
                 *laserCloudCornerFromMap += laserCloudCornerTemp;
                 *laserCloudSurfFromMap   += laserCloudSurfTemp;
                 laserCloudMapContainer[thisKeyInd] = make_pair(laserCloudCornerTemp, laserCloudSurfTemp);
@@ -613,7 +618,7 @@ public:
 
     void extractSurroundingKeyFrames()
     {
-        if (dist_mapping.getLocalKeyposesCloud3D()->points.empty() == true)
+        if (dist_mapping->getLocalKeyposesCloud3D()->points.empty() == true)
             return; 
         
         // if (loopClosureEnableFlag == true)
@@ -956,7 +961,7 @@ public:
 
     void scan2MapOptimization()
     {
-        if (dist_mapping.getLocalKeyposesCloud3D()->points.empty())
+        if (dist_mapping->getLocalKeyposesCloud3D()->points.empty())
             return;
 
         if (laserCloudCornerLastDSNum > edgeFeatureMinValidNum && laserCloudSurfLastDSNum > surfFeatureMinValidNum)
@@ -1109,36 +1114,52 @@ public:
     }
 };
 
-
 int main(int argc, char** argv)
 {   
+    // Initialize ROS 2
     rclcpp::init(argc, argv);
 
+    // Node options for intra-process communication
     rclcpp::NodeOptions options;
     options.use_intra_process_comms(true);
-    rclcpp::executors::SingleThreadedExecutor exec;
 
+    // Create the main map optimization node
     auto MO = std::make_shared<mapOptimization>(options);
+
+    // Use SingleThreadedExecutor (since MultiThreadedExecutor caused failures)
+    rclcpp::executors::SingleThreadedExecutor exec;
     exec.add_node(MO);
+    exec.add_node(MO->dist_mapping);
 
     RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "\033[1;32m----> Map Optimization Started.\033[0m");
 
-    // std::thread loopthread(&mapOptimization::loopClosureThread, MO);
-    // std::thread visualizeMapThread(&mapOptimization::visualizeGlobalMapThread, MO);
+    // Start distributed mapping loop closure threads
+    // std::thread intraLoopThread(&distributedMapping::intraLoopClosureThread, &(MO->dist_mapping));
+    // std::thread interLoopThread(&distributedMapping::interLoopClosureThread, &(MO->dist_mapping));
+    std::thread loopThread(&distributedMapping::loopClosureThread, MO->dist_mapping.get());
 
-    // Loop Closure threads
-    std::thread intraLoopThread(&distributedMapping::intraLoopClosureThread, &(MO->dist_mapping));
-    std::thread interLoopThread(&distributedMapping::interLoopClosureThread, &(MO->dist_mapping));
-    // distributed mapping viz thread
-    std::thread visualize_map_thread(&distributedMapping::globalMapThread, &(MO->dist_mapping));
+    // Start distributed mapping visualization thread
+    std::thread visualize_map_thread(&distributedMapping::globalMapThread, MO->dist_mapping.get());
 
+    // Log before spinning
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Starting ROS 2 spin loop...");
+
+    // Spin in the main thread
     exec.spin();
 
+    // Log when exiting spin loop
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "Exited exec.spin(), shutting down...");
+
+    // Shutdown ROS 2
     rclcpp::shutdown();
 
-    intraLoopThread.join();
-    interLoopThread.join();
+    // Ensure the additional threads are properly joined before exiting
+    // intraLoopThread.join();
+    // interLoopThread.join();
+    loopThread.join();
     visualize_map_thread.join();
+
+    RCLCPP_INFO(rclcpp::get_logger("rclcpp"), "All threads joined. Exiting program.");
 
     return 0;
 }
