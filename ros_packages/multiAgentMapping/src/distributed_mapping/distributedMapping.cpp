@@ -842,24 +842,33 @@ void distributedMapping::outliersFiltering() {
             const auto& trajectory = pose_estimates_from_neighbors.at(neighbor);
             auto& poses = trajectory.trajectory_poses;
 
-            // Initialize transforms with first pose's ID
-            if (!poses.empty()) {
-                neighbor_transforms.start_id = poses.begin()->first;
-                neighbor_transforms.end_id = poses.rbegin()->first;
+            // Sort poses by key to ensure proper ordering
+            std::vector<std::pair<Key, graph_utils::TrajectoryPose>> sorted_poses;
+            sorted_poses.reserve(poses.size());
+            for (const auto& pose_pair : poses) {
+                sorted_poses.push_back(pose_pair);
+            }
+            std::sort(sorted_poses.begin(), sorted_poses.end(),
+                [](const auto& a, const auto& b) { return a.first < b.first; });
 
-                // Create transforms between consecutive poses
-                for(auto it = poses.begin(); it != std::prev(poses.end()); ++it) {
-                    auto next_it = std::next(it);
-                    
-                    graph_utils::Transform transform;
-                    transform.i = it->first;
-                    transform.j = next_it->first;
-                    transform.is_loopclosure = false;
-                    transform.pose.pose = it->second.pose.pose.between(next_it->second.pose.pose);
-                    transform.pose.covariance_matrix = graph_utils::FIXED_COVARIANCE;
-                    
-                    neighbor_transforms.transforms.insert(
-                        std::make_pair(std::make_pair(transform.i, transform.j), transform));
+            // Initialize transforms with first pose's ID if poses exist
+            if (!sorted_poses.empty()) {
+                neighbor_transforms.start_id = sorted_poses.front().first;
+                neighbor_transforms.end_id = sorted_poses.back().first;
+
+                // Create transforms between all poses
+                for (size_t i = 0; i < sorted_poses.size(); i++) {
+                    for (size_t j = i + 1; j < sorted_poses.size(); j++) {
+                        graph_utils::Transform transform;
+                        transform.i = sorted_poses[i].first;
+                        transform.j = sorted_poses[j].first;
+                        transform.is_loopclosure = false;
+                        transform.pose.pose = sorted_poses[i].second.pose.pose.between(sorted_poses[j].second.pose.pose);
+                        transform.pose.covariance_matrix = graph_utils::FIXED_COVARIANCE;
+                        
+                        neighbor_transforms.transforms.insert(
+                            std::make_pair(std::make_pair(transform.i, transform.j), transform));
+                    }
                 }
             }
 
@@ -890,42 +899,35 @@ void distributedMapping::outliersFiltering() {
                 robot_local_map.getTransforms(), 
                 robot_local_map.getLoopClosures());
 
-            RCLCPP_INFO(this->get_logger(),
+            // Print transform counts for debugging
+            RCLCPP_INFO(this->get_logger(), 
                 "[outliersFiltering] Transform conversion details:\n"
                 "  Robot %d pose estimates count: %zu\n"
                 "  Robot %d pose estimates converted to transforms: %zu\n"
                 "  Latest pose estimate key: %lu",
-                neighbor, poses.size(),
-                neighbor, neighbor_transforms.transforms.size(),
-                poses.empty() ? 0 : poses.begin()->first);
+                neighbor,
+                poses.size(),
+                neighbor,
+                neighbor_transforms.transforms.size(),
+                neighbor_transforms.end_id);
 
-            // create global map
-            auto globalMap = global_map::GlobalMap(local_info, neighbor_local_info,
-                inter_robot_measurements, pcm_threshold_, use_heuristics_);
-
-            auto transforms_size = loop_closures_transforms.transforms.size();
-            RCLCPP_INFO(this->get_logger(),
-                "[outliersFiltering] PCM Input Stats - Robot %d and %d:\n"
+            RCLCPP_INFO(this->get_logger(), "[outliersFiltering] PCM Input Stats - Robot %d and %d:\n"
                 "  Loop closure transforms: %zu\n"
                 "  Local transforms R1: %zu\n"
                 "  Local transforms R2: %zu",
                 robot_id, neighbor,
-                transforms_size,
+                loop_closures_transforms.transforms.size(),
                 local_info.getTransforms().transforms.size(),
-                neighbor_local_info.getTransforms().transforms.size());
-            
-            RCLCPP_INFO(this->get_logger(), 
-                "[outliersFiltering] Starting PCM between robots %d and %d - Checking transform data",
-                robot_id, neighbor);
-            
-            // Print info about the global map before PCM
-            RCLCPP_INFO(this->get_logger(),
-                "[outliersFiltering] Attempting PCM for robots %d and %d",
+                neighbor_transforms.transforms.size());
+
+            RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Starting PCM between robots %d and %d - Checking transform data",
                 robot_id, neighbor);
 
             // Try PCM with additional error information
             std::pair<std::vector<int>, int> max_clique_info;
             try {
+                auto globalMap = global_map::GlobalMap(local_info, neighbor_local_info,
+                    inter_robot_measurements, pcm_threshold_, use_heuristics_);
                 max_clique_info = globalMap.pairwiseConsistencyMaximization();
             } catch (const std::exception& e) {
                 RCLCPP_ERROR(this->get_logger(), 
@@ -935,19 +937,12 @@ void distributedMapping::outliersFiltering() {
 
             std::vector<int> max_clique = max_clique_info.first;
 
-            RCLCPP_INFO(this->get_logger(), 
-                "[outliersFiltering] PCM Results - Robot %d with %d:\n"
-                "  - Max clique size: %zu\n"
-                "  - Accepted measurements: %d\n"
-                "  - Rejected measurements: %d",
-                robot_id, neighbor, max_clique.size(), 
-                measurements_accepted_num, measurements_rejected_num);
-
-            // retrieve indexes of rejected measurements
+            // get loopclosure ids
             auto loopclosures_ids = optimizer->loopclosureEdge();
             std::vector<int> rejected_loopclosure_ids;
             rejected_loopclosure_ids.reserve(1000);
             std::set<std::pair<Key, Key>> accepted_key_pairs, rejected_key_pairs;
+
             for(int i = 0; i < loopclosures_ids.size(); i++) {
                 if(distributed_pcm::DistributedPCM::isloopclosureToBeRejected(max_clique, loopclosures_ids[i],
                     loop_closures_transforms, inter_robot_measurements.getLoopClosures(), optimizer)) {
@@ -987,8 +982,6 @@ void distributedMapping::outliersFiltering() {
                 if(keys.size() == 2) {
                     char robot0 = symbolChr(keys.at(0));
                     char robot1 = symbolChr(keys.at(1));
-                    int index0 = symbolIndex(keys.at(0));
-                    int index1 = symbolIndex(keys.at(1));
                     if(robot0 != robot1) {
                         new_loopclosure_ids.push_back(i);
                     }
