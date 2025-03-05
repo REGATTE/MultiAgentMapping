@@ -374,4 +374,5 @@ void distributedMapping::performExternLoopClosure(){
 	robots[robot_id].pub_loop_info->publish(inter_loop);
 	loop_indexes.emplace(make_pair(loop_symbol0, loop_symbol1));
 	loop_indexes.emplace(make_pair(loop_symbol1, loop_symbol0));
+    RCLCPP_INFO(this->get_logger(), "[InterLoopClosure : performExternLoopClosure] -> Loop closure added and published between robots %d and %d", inter_loop.robot0, inter_loop.robot1);
 }

@@ -107,13 +107,6 @@ void distributedMapping::loopInfoHandler(
 
 			// add transform to local map (for PCM)
 			auto new_factor = boost::dynamic_pointer_cast<BetweenFactor<Pose3>>(factor);
-
-            RCLCPP_INFO(this->get_logger(),
-                "[LoopClosureUtils] Added transform to local map:\n"
-                "  From robot: %d (key: %lu)\n"
-                "  To robot: %d (key: %lu)",
-                msg->robot0, new_factor->key1(),
-                msg->robot1, new_factor->key2());
 			Matrix covariance_matrix = loop_noise->covariance();
 			robot_local_map.addTransform(*new_factor, covariance_matrix);
 
@@ -235,6 +228,16 @@ void distributedMapping::updatePoseEstimateFromNeighbor(
     const Key& key,
     const graph_utils::PoseWithCovariance& pose)
 {
+    RCLCPP_INFO(this->get_logger(),
+        "[updatePoseEstimateFromNeighbor] Received pose from robot %d:\n"
+        "  Key: %lu\n"
+        "  Pose: x=%.2f, y=%.2f, z=%.2f",
+        robot_id,
+        key,
+        pose.pose.x(),
+        pose.pose.y(),
+        pose.pose.z());
+        
     graph_utils::TrajectoryPose trajectory_pose;  // Initialize a new trajectory pose.
     trajectory_pose.id = key;                     // Set the pose ID.
     trajectory_pose.pose = pose;                  // Set the pose with covariance.

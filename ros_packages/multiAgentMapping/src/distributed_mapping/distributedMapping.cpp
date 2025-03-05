@@ -820,242 +820,201 @@ void distributedMapping::updateOptimizer(){
 	}
 }
 
-void distributedMapping::outliersFiltering(){
-	robot_local_map_backup = robot_local_map;
-	if(use_pcm_)
-	{
-		measurements_accepted_num = 0;
-		measurements_rejected_num = 0;
+void distributedMapping::outliersFiltering() {
+    robot_local_map_backup = robot_local_map;
+    if(use_pcm_)
+    {
+        measurements_accepted_num = 0;
+        measurements_rejected_num = 0;
 
-		RCLCPP_INFO(this->get_logger(), 
-			"[outliersFiltering] Processing %zu neighbors within communication range", 
-			neighbors_within_communication_range.size());
+        RCLCPP_INFO(this->get_logger(), 
+            "[outliersFiltering] Processing %zu neighbors within communication range", 
+            neighbors_within_communication_range.size());
 
-		// perform pairwise consistency maximization for each pair robot 
-		for(const auto& neighbor : neighbors_within_communication_range){
-			if(neighbor == robot_id || pose_estimates_from_neighbors.find(neighbor) == pose_estimates_from_neighbors.end()){
-				continue;
-			}
+        // perform pairwise consistency maximization for each pair robot 
+        for(const auto& neighbor : neighbors_within_communication_range) {
+            if(neighbor == robot_id || pose_estimates_from_neighbors.find(neighbor) == pose_estimates_from_neighbors.end()) {
+                continue;
+            }
 
-			// get other robot trajectory
-			graph_utils::Transforms empty_transforms;
-			auto neighbor_local_info = robot_measurements::RobotLocalMap(
-				pose_estimates_from_neighbors.at(neighbor), empty_transforms, robot_local_map.getLoopClosures());
-			
-			RCLCPP_INFO(this->get_logger(),
-				"[outliersFiltering] Detailed pose estimate info for robot %d:\n"
-				"  Start ID: %lu\n"
-				"  End ID: %lu\n"
-				"  First pose key: %lu\n"
-				"  Last pose key: %lu",
-				neighbor,
-				pose_estimates_from_neighbors[neighbor].start_id,
-				pose_estimates_from_neighbors[neighbor].end_id,
-				pose_estimates_from_neighbors[neighbor].trajectory_poses.begin()->first,
-				pose_estimates_from_neighbors[neighbor].trajectory_poses.rbegin()->first);
+            // Create transforms from neighbor poses
+            graph_utils::Transforms neighbor_transforms;
+            const auto& trajectory = pose_estimates_from_neighbors.at(neighbor);
+            auto& poses = trajectory.trajectory_poses;
 
-			// get inter-robot loop closure measurements
-			graph_utils::Transforms loop_closures_transforms;
-			for (const auto& transform : robot_local_map.getTransforms().transforms)
-			{
-				auto robot0 = (int) (Symbol(transform.second.i).chr()-97);
-				auto robot1 = (int) (Symbol(transform.second.j).chr()-97);
-				if(robot0 == neighbor || robot1 == neighbor)
-				{
-					loop_closures_transforms.transforms.insert(transform);
-				}
-			}
+            // Initialize transforms with first pose's ID
+            if (!poses.empty()) {
+                neighbor_transforms.start_id = poses.begin()->first;
+                neighbor_transforms.end_id = poses.rbegin()->first;
 
-			RCLCPP_INFO(this->get_logger(), 
-				"[outliersFiltering] Found loop closure transforms between robots %d and %d", robot_id, neighbor);
+                // Create transforms between consecutive poses
+                for(auto it = poses.begin(); it != std::prev(poses.end()); ++it) {
+                    auto next_it = std::next(it);
+                    
+                    graph_utils::Transform transform;
+                    transform.i = it->first;
+                    transform.j = next_it->first;
+                    transform.is_loopclosure = false;
+                    transform.pose.pose = it->second.pose.pose.between(next_it->second.pose.pose);
+                    transform.pose.covariance_matrix = graph_utils::FIXED_COVARIANCE;
+                    
+                    neighbor_transforms.transforms.insert(
+                        std::make_pair(std::make_pair(transform.i, transform.j), transform));
+                }
+            }
 
-			auto inter_robot_measurements = robot_measurements::InterRobotMeasurements(
-				loop_closures_transforms, optimizer->robotName(), (char)neighbor + 97);
+            // Create neighbor local info with computed transforms
+            auto neighbor_local_info = robot_measurements::RobotLocalMap(
+                trajectory, neighbor_transforms, robot_local_map.getLoopClosures());
 
-			// local trajectory 
-			auto local_info = robot_measurements::RobotLocalMap(
-				pose_estimates_from_neighbors.at(robot_id), robot_local_map.getTransforms(), robot_local_map.getLoopClosures());
+            // get inter-robot loop closure measurements
+            graph_utils::Transforms loop_closures_transforms;
+            for (const auto& transform : robot_local_map.getTransforms().transforms) {
+                auto robot0 = (int)(Symbol(transform.second.i).chr()-97);
+                auto robot1 = (int)(Symbol(transform.second.j).chr()-97);
+                if(robot0 == neighbor || robot1 == neighbor) {
+                    loop_closures_transforms.transforms.insert(transform);
+                }
+            }
 
-			RCLCPP_INFO(this->get_logger(), 
-				"[outliersFiltering] Creating global map for PCM between robots %d and %d", 
-				robot_id, neighbor);
+            RCLCPP_INFO(this->get_logger(), 
+                "[outliersFiltering] Found loop closure transforms between robots %d and %d", 
+                robot_id, neighbor);
 
-			RCLCPP_INFO(this->get_logger(),
-				"[outliersFiltering] Detailed transform stats:\n"
-				"  Robot %d local map transforms: %zu\n"
-				"  Robot %d pose estimates available: %s\n"
-				"  Robot %d neighbor info transforms: %zu\n"
-				"  Latest transform in local map:\n"
-				"    From: Robot %d (key: %lu)\n"
-				"    To: Robot %d (key: %lu)",
-				robot_id, robot_local_map.getTransforms().transforms.size(),
-				neighbor, pose_estimates_from_neighbors.find(neighbor) != pose_estimates_from_neighbors.end() ? "yes" : "no",
-				neighbor, neighbor_local_info.getTransforms().transforms.size(),
-				robot_id, robot_local_map.getTransforms().transforms.begin()->first.first,
-				neighbor, robot_local_map.getTransforms().transforms.begin()->first.second);
+            auto inter_robot_measurements = robot_measurements::InterRobotMeasurements(
+                loop_closures_transforms, optimizer->robotName(), (char)neighbor + 97);
 
-			// After line 883, right after the previous logging block and before creating global map
-			RCLCPP_INFO(this->get_logger(), 
-				"[outliersFiltering] Creating global map for PCM between robots %d and %d", 
-				robot_id, neighbor);  // This is around line 883
+            // local trajectory 
+            auto local_info = robot_measurements::RobotLocalMap(
+                pose_estimates_from_neighbors.at(robot_id), 
+                robot_local_map.getTransforms(), 
+                robot_local_map.getLoopClosures());
 
-			// Add the new logging here (around line 884-885)
-			RCLCPP_INFO(this->get_logger(),
-				"[outliersFiltering] Transform conversion details:\n"
-				"  Robot %d pose estimates count: %zu\n"
-				"  Robot %d pose estimates converted to transforms: %zu\n"
-				"  Latest pose estimate key: %lu",
-				neighbor, pose_estimates_from_neighbors[neighbor].trajectory_poses.size(),
-				neighbor, neighbor_local_info.getTransforms().transforms.size(),
-				pose_estimates_from_neighbors[neighbor].trajectory_poses.empty() ? 0 : 
-					pose_estimates_from_neighbors[neighbor].trajectory_poses.begin()->first);
+            RCLCPP_INFO(this->get_logger(),
+                "[outliersFiltering] Transform conversion details:\n"
+                "  Robot %d pose estimates count: %zu\n"
+                "  Robot %d pose estimates converted to transforms: %zu\n"
+                "  Latest pose estimate key: %lu",
+                neighbor, poses.size(),
+                neighbor, neighbor_transforms.transforms.size(),
+                poses.empty() ? 0 : poses.begin()->first);
 
-			// create global map
-			auto globalMap = global_map::GlobalMap(local_info, neighbor_local_info,
-				inter_robot_measurements, pcm_threshold_, use_heuristics_);
+            // create global map
+            auto globalMap = global_map::GlobalMap(local_info, neighbor_local_info,
+                inter_robot_measurements, pcm_threshold_, use_heuristics_);
 
-			auto transforms_size = loop_closures_transforms.transforms.size();
-			RCLCPP_INFO(this->get_logger(),
-				"[outliersFiltering] PCM Input Stats - Robot %d and %d:\n"
-				"  Loop closure transforms: %zu\n"
-				"  Local transforms R1: %zu\n"
-				"  Local transforms R2: %zu",
-				robot_id, neighbor,
-				transforms_size,
-				local_info.getTransforms().transforms.size(),
-				neighbor_local_info.getTransforms().transforms.size());
+            auto transforms_size = loop_closures_transforms.transforms.size();
+            RCLCPP_INFO(this->get_logger(),
+                "[outliersFiltering] PCM Input Stats - Robot %d and %d:\n"
+                "  Loop closure transforms: %zu\n"
+                "  Local transforms R1: %zu\n"
+                "  Local transforms R2: %zu",
+                robot_id, neighbor,
+                transforms_size,
+                local_info.getTransforms().transforms.size(),
+                neighbor_local_info.getTransforms().transforms.size());
+            
+            RCLCPP_INFO(this->get_logger(), 
+                "[outliersFiltering] Starting PCM between robots %d and %d - Checking transform data",
+                robot_id, neighbor);
+            
+            // Print info about the global map before PCM
+            RCLCPP_INFO(this->get_logger(),
+                "[outliersFiltering] Attempting PCM for robots %d and %d",
+                robot_id, neighbor);
 
-			// Add after the PCM Input Stats logging
-			if (local_info.getTransforms().transforms.empty() || 
-				neighbor_local_info.getTransforms().transforms.empty()) {
-				RCLCPP_WARN(this->get_logger(),
-					"[outliersFiltering] Missing local transforms for PCM between robots %d and %d:\n"
-					"  Robot %d transforms: %zu\n"
-					"  Robot %d transforms: %zu\n"
-					"Skipping PCM.",
-					robot_id, neighbor,
-					robot_id, local_info.getTransforms().transforms.size(),
-					neighbor, neighbor_local_info.getTransforms().transforms.size());
-				continue;
-			}
-			
-			RCLCPP_INFO(this->get_logger(), 
-				"[outliersFiltering] Starting PCM between robots %d and %d - Checking transform data",
-				robot_id, neighbor);
-			
-			// Print info about the global map before PCM
-			RCLCPP_INFO(this->get_logger(),
-				"[outliersFiltering] Attempting PCM for robots %d and %d",
-				robot_id, neighbor);
+            // Try PCM with additional error information
+            std::pair<std::vector<int>, int> max_clique_info;
+            try {
+                max_clique_info = globalMap.pairwiseConsistencyMaximization();
+            } catch (const std::exception& e) {
+                RCLCPP_ERROR(this->get_logger(), 
+                    "[outliersFiltering] PCM failed with error: %s", e.what());
+                continue;
+            }
 
-			// Try PCM with additional error information
-			std::pair<std::vector<int>, int> max_clique_info;
-			try {
-				RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Starting pairwiseConsistencyMaximization");
-				max_clique_info = globalMap.pairwiseConsistencyMaximization();
-				RCLCPP_INFO(this->get_logger(), 
-					"[outliersFiltering] PCM completed with clique size: %d", 
-					max_clique_info.second);
-			} catch (const std::bad_alloc& e) {
-				RCLCPP_ERROR(this->get_logger(), 
-					"[outliersFiltering] Memory allocation failed during PCM for robots %d and %d: %s", 
-					robot_id, neighbor, e.what());
-				continue;
-			} catch (const std::exception& e) {
-				RCLCPP_ERROR(this->get_logger(), 
-					"[outliersFiltering] PCM failed for robots %d and %d: %s", 
-					robot_id, neighbor, e.what());
-				continue;
-			}
-			// pairwise consistency maximization
-			// auto max_clique_info = globalMap.pairwiseConsistencyMaximization();
-			RCLCPP_INFO(this->get_logger(), "max_clique_info");
-			std::vector<int> max_clique = max_clique_info.first;
-			RCLCPP_INFO(this->get_logger(), "max_clique_info.first");
-			measurements_accepted_num += max_clique.size();
-			RCLCPP_INFO(this->get_logger(), "max_clique_info.size");
-			measurements_rejected_num += max_clique_info.second;
-			RCLCPP_INFO(this->get_logger(), "max_clique_info.second");
+            std::vector<int> max_clique = max_clique_info.first;
 
-			RCLCPP_INFO(this->get_logger(), 
-				"[outliersFiltering] PCM Results - Robot %d with %d:\n"
-				"  - Max clique size: %zu\n"
-				"  - Accepted measurements: %d\n"
-				"  - Rejected measurements: %d",
-				robot_id, neighbor, max_clique.size(), 
-				measurements_accepted_num, measurements_rejected_num);
+            RCLCPP_INFO(this->get_logger(), 
+                "[outliersFiltering] PCM Results - Robot %d with %d:\n"
+                "  - Max clique size: %zu\n"
+                "  - Accepted measurements: %d\n"
+                "  - Rejected measurements: %d",
+                robot_id, neighbor, max_clique.size(), 
+                measurements_accepted_num, measurements_rejected_num);
 
-			// retrieve indexes of rejected measurements
-			auto loopclosures_ids = optimizer->loopclosureEdge();
-			std::vector<int> rejected_loopclosure_ids;
-			rejected_loopclosure_ids.reserve(1000);
-			std::set<std::pair<Key, Key>> accepted_key_pairs, rejected_key_pairs;
-			for(int i = 0; i < loopclosures_ids.size(); i++){
-				if(distributed_pcm::DistributedPCM::isloopclosureToBeRejected(max_clique, loopclosures_ids[i],
-					loop_closures_transforms, inter_robot_measurements.getLoopClosures(), optimizer)){
-					rejected_loopclosure_ids.emplace_back(i);
+            // retrieve indexes of rejected measurements
+            auto loopclosures_ids = optimizer->loopclosureEdge();
+            std::vector<int> rejected_loopclosure_ids;
+            rejected_loopclosure_ids.reserve(1000);
+            std::set<std::pair<Key, Key>> accepted_key_pairs, rejected_key_pairs;
+            for(int i = 0; i < loopclosures_ids.size(); i++) {
+                if(distributed_pcm::DistributedPCM::isloopclosureToBeRejected(max_clique, loopclosures_ids[i],
+                    loop_closures_transforms, inter_robot_measurements.getLoopClosures(), optimizer)) {
+                    rejected_loopclosure_ids.emplace_back(i);
 
-					// Update robot local map and store keys
-					auto loopclosure_factor = boost::dynamic_pointer_cast<BetweenFactor<Pose3>>(
-						optimizer->currentGraph().at(loopclosures_ids[i]));
-					robot_local_map.removeTransform(std::make_pair(loopclosure_factor->keys().at(0), loopclosure_factor->keys().at(1)));
-					optimizer->eraseseparatorsSymbols(std::make_pair(loopclosure_factor->keys().at(0), loopclosure_factor->keys().at(1)));
-					optimizer->eraseseparatorsSymbols(std::make_pair(loopclosure_factor->keys().at(1), loopclosure_factor->keys().at(0)));
-					rejected_key_pairs.insert(std::make_pair(loopclosure_factor->keys().at(0), loopclosure_factor->keys().at(1)));
-				} else {
-					auto loopclosure_factor = boost::dynamic_pointer_cast<BetweenFactor<Pose3>>(
-						optimizer->currentGraph().at(loopclosures_ids[i]));
-					accepted_key_pairs.insert(std::make_pair(loopclosure_factor->keys().at(0), loopclosure_factor->keys().at(1)));
-				}
-			}
+                    // Update robot local map and store keys
+                    auto loopclosure_factor = boost::dynamic_pointer_cast<BetweenFactor<Pose3>>(
+                        optimizer->currentGraph().at(loopclosures_ids[i]));
+                    robot_local_map.removeTransform(std::make_pair(loopclosure_factor->keys().at(0), loopclosure_factor->keys().at(1)));
+                    optimizer->eraseseparatorsSymbols(std::make_pair(loopclosure_factor->keys().at(0), loopclosure_factor->keys().at(1)));
+                    optimizer->eraseseparatorsSymbols(std::make_pair(loopclosure_factor->keys().at(1), loopclosure_factor->keys().at(0)));
+                    rejected_key_pairs.insert(std::make_pair(loopclosure_factor->keys().at(0), loopclosure_factor->keys().at(1)));
+                } else {
+                    auto loopclosure_factor = boost::dynamic_pointer_cast<BetweenFactor<Pose3>>(
+                        optimizer->currentGraph().at(loopclosures_ids[i]));
+                    accepted_key_pairs.insert(std::make_pair(loopclosure_factor->keys().at(0), loopclosure_factor->keys().at(1)));
+                }
+            }
 
-			// remove measurements not in the max clique
-			RCLCPP_INFO(this->get_logger(), "remove measurements not in the max clique");
-			int number_loopclosure_ids_removed = 0;
-			for(const auto& index : rejected_loopclosure_ids){
-				auto factor_id = loopclosures_ids[index] - number_loopclosure_ids_removed;
-				number_loopclosure_ids_removed++;
-				optimizer->eraseFactor(factor_id);
-				local_pose_graph->erase(local_pose_graph->begin()+factor_id);
-			}
+            // remove measurements not in the max clique
+            RCLCPP_INFO(this->get_logger(), "remove measurements not in the max clique");
+            int number_loopclosure_ids_removed = 0;
+            for(const auto& index : rejected_loopclosure_ids) {
+                auto factor_id = loopclosures_ids[index] - number_loopclosure_ids_removed;
+                number_loopclosure_ids_removed++;
+                optimizer->eraseFactor(factor_id);
+                local_pose_graph->erase(local_pose_graph->begin()+factor_id);
+            }
 
-			// Update loopclosure ids
-			RCLCPP_INFO(this->get_logger(), "Update loopclosure ids");
-			std::vector<size_t> new_loopclosure_ids;
-			new_loopclosure_ids.reserve(10000);
-			int number_of_edges = optimizer->currentGraph().size();
-			for(int i = 0; i < number_of_edges; i++){
-				auto keys = optimizer->currentGraph().at(i)->keys();
-				if(keys.size() == 2){
-					char robot0 = symbolChr(keys.at(0));
-					char robot1 = symbolChr(keys.at(1));
-					int index0 = symbolIndex(keys.at(0));
-					int index1 = symbolIndex(keys.at(1));
-					if(robot0 != robot1){
-						new_loopclosure_ids.push_back(i);
-					}
-				}
-			}
-			optimizer->setloopclosureIds(new_loopclosure_ids);
-			RCLCPP_INFO(this->get_logger(), "Update loopclosure ids done");
-			// save accepted pair
-			for(const auto& accepted_pair : accepted_key_pairs){
-				accepted_keys.insert(accepted_pair);
-				if(Symbol(accepted_pair.first).chr() == char(robot_id + 'a')){
-					other_robot_keys_for_optimization.insert(accepted_pair.second);
-				} else {
-					other_robot_keys_for_optimization.insert(accepted_pair.first);
-				}
-			}
-			// save rejected pair
-			for(const auto& rejected_pair : rejected_key_pairs){
-				rejected_keys.insert(rejected_pair);
-			}
+            // Update loopclosure ids
+            RCLCPP_INFO(this->get_logger(), "Update loopclosure ids");
+            std::vector<size_t> new_loopclosure_ids;
+            new_loopclosure_ids.reserve(10000);
+            int number_of_edges = optimizer->currentGraph().size();
+            for(int i = 0; i < number_of_edges; i++) {
+                auto keys = optimizer->currentGraph().at(i)->keys();
+                if(keys.size() == 2) {
+                    char robot0 = symbolChr(keys.at(0));
+                    char robot1 = symbolChr(keys.at(1));
+                    int index0 = symbolIndex(keys.at(0));
+                    int index1 = symbolIndex(keys.at(1));
+                    if(robot0 != robot1) {
+                        new_loopclosure_ids.push_back(i);
+                    }
+                }
+            }
+            optimizer->setloopclosureIds(new_loopclosure_ids);
+            RCLCPP_INFO(this->get_logger(), "Update loopclosure ids done");
 
-			RCLCPP_INFO(this->get_logger(), "outliersFiltering<%d>, other=%d, max clique size=%d, removed=%d", 
-            robot_id, neighbor, static_cast<int>(max_clique.size()), max_clique_info.second);
-		}
-	}
+            // save accepted pair
+            for(const auto& accepted_pair : accepted_key_pairs) {
+                accepted_keys.insert(accepted_pair);
+                if(Symbol(accepted_pair.first).chr() == char(robot_id + 'a')) {
+                    other_robot_keys_for_optimization.insert(accepted_pair.second);
+                } else {
+                    other_robot_keys_for_optimization.insert(accepted_pair.first);
+                }
+            }
+            // save rejected pair
+            for(const auto& rejected_pair : rejected_key_pairs) {
+                rejected_keys.insert(rejected_pair);
+            }
+
+            RCLCPP_INFO(this->get_logger(), "outliersFiltering<%d>, other=%d, max clique size=%d, removed=%d", 
+                robot_id, neighbor, static_cast<int>(max_clique.size()), max_clique_info.second);
+        }
+    }
 }
 
 /**
