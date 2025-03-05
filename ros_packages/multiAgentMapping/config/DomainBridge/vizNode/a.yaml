@@ -15,7 +15,7 @@ topics:
       reliability: reliable
       durability: volatile
       history: keep_last
-      depth: 5
+      depth: 50
   /a/lio_sam/mapping/odometry:
     type: nav_msgs/msg/Odometry
     qos:

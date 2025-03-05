@@ -25,13 +25,13 @@ distributedMapping::distributedMapping(const rclcpp::NodeOptions & options)
                 // publish global descriptors
                 robot.pub_descriptors = this->create_publisher<multi_agent_mapping::msg::GlobalDescriptor>(
                     robot.robot_name + "/distributedMapping/globalDescriptors", 
-                    rclcpp::QoS(5).reliable()
+                    rclcpp::QoS(50).reliable()
                 );
                 RCLCPP_INFO(this->get_logger(), "Publishing to: %s", (robot.robot_name + "/distributedMapping/globalDescriptors").c_str());
                 // publish Loop Info
                 robot.pub_loop_info = this->create_publisher<multi_agent_mapping::msg::LoopInfo>(
                     robot.robot_name + "/distributedMapping/loopInfo", 
-                    rclcpp::QoS(5).reliable()
+                    rclcpp::QoS(50).reliable()
                 );
                 RCLCPP_INFO(this->get_logger(), "Publishing to: %s", (robot.robot_name + "/distributedMapping/loopInfo").c_str());
             }
@@ -151,7 +151,7 @@ distributedMapping::distributedMapping(const rclcpp::NodeOptions & options)
             }   
         }
 
-        robot.time_cloud_input_stamp = rclcpp::Time(0, 0, RCL_ROS_TIME);
+        robot.time_cloud_input_stamp = rclcpp::Time();
         robot.time_cloud_input = 0.0;
 
         robot.keyframe_cloud.reset(new pcl::PointCloud<PointPose3D>());
@@ -243,7 +243,7 @@ distributedMapping::distributedMapping(const rclcpp::NodeOptions & options)
         new distributed_mapper::DistributedMapper(robot_id + 'a')
     );
 
-    steps_of_unchange_graph = 1;
+    steps_of_unchange_graph = 0;
 
     local_pose_graph = boost::make_shared<NonlinearFactorGraph>();
     initial_values = boost::make_shared<Values>();
@@ -368,14 +368,14 @@ void distributedMapping::msg2poseCovariance(
     graph_utils::PoseWithCovariance& pose) {
 
     // Convert orientation to Rot3
-    gtsam::Rot3 rotation(msg.pose.orientation.w, msg.pose.orientation.x,
+    Rot3 rotation(msg.pose.orientation.w, msg.pose.orientation.x,
                          msg.pose.orientation.y, msg.pose.orientation.z);
 
     // Convert position to Point3
-    gtsam::Point3 translation(msg.pose.position.x, msg.pose.position.y, msg.pose.position.z);
+    Point3 translation(msg.pose.position.x, msg.pose.position.y, msg.pose.position.z);
 
     // Set the pose using Pose3
-    pose.pose = gtsam::Pose3(rotation, translation);
+    pose.pose = Pose3(rotation, translation);
 
     // Initialize covariance matrix to zeros
     pose.covariance_matrix = gtsam::Matrix::Zero(6, 6);
