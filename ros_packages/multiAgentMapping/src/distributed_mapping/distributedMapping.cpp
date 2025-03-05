@@ -841,6 +841,18 @@ void distributedMapping::outliersFiltering(){
 			graph_utils::Transforms empty_transforms;
 			auto neighbor_local_info = robot_measurements::RobotLocalMap(
 				pose_estimates_from_neighbors.at(neighbor), empty_transforms, robot_local_map.getLoopClosures());
+			
+			RCLCPP_INFO(this->get_logger(),
+				"[outliersFiltering] Detailed pose estimate info for robot %d:\n"
+				"  Start ID: %lu\n"
+				"  End ID: %lu\n"
+				"  First pose key: %lu\n"
+				"  Last pose key: %lu",
+				neighbor,
+				pose_estimates_from_neighbors[neighbor].start_id,
+				pose_estimates_from_neighbors[neighbor].end_id,
+				pose_estimates_from_neighbors[neighbor].trajectory_poses.begin()->first,
+				pose_estimates_from_neighbors[neighbor].trajectory_poses.rbegin()->first);
 
 			// get inter-robot loop closure measurements
 			graph_utils::Transforms loop_closures_transforms;
@@ -868,18 +880,87 @@ void distributedMapping::outliersFiltering(){
 				"[outliersFiltering] Creating global map for PCM between robots %d and %d", 
 				robot_id, neighbor);
 
+			RCLCPP_INFO(this->get_logger(),
+				"[outliersFiltering] Detailed transform stats:\n"
+				"  Robot %d local map transforms: %zu\n"
+				"  Robot %d pose estimates available: %s\n"
+				"  Robot %d neighbor info transforms: %zu\n"
+				"  Latest transform in local map:\n"
+				"    From: Robot %d (key: %lu)\n"
+				"    To: Robot %d (key: %lu)",
+				robot_id, robot_local_map.getTransforms().transforms.size(),
+				neighbor, pose_estimates_from_neighbors.find(neighbor) != pose_estimates_from_neighbors.end() ? "yes" : "no",
+				neighbor, neighbor_local_info.getTransforms().transforms.size(),
+				robot_id, robot_local_map.getTransforms().transforms.begin()->first.first,
+				neighbor, robot_local_map.getTransforms().transforms.begin()->first.second);
+
+			// After line 883, right after the previous logging block and before creating global map
+			RCLCPP_INFO(this->get_logger(), 
+				"[outliersFiltering] Creating global map for PCM between robots %d and %d", 
+				robot_id, neighbor);  // This is around line 883
+
+			// Add the new logging here (around line 884-885)
+			RCLCPP_INFO(this->get_logger(),
+				"[outliersFiltering] Transform conversion details:\n"
+				"  Robot %d pose estimates count: %zu\n"
+				"  Robot %d pose estimates converted to transforms: %zu\n"
+				"  Latest pose estimate key: %lu",
+				neighbor, pose_estimates_from_neighbors[neighbor].trajectory_poses.size(),
+				neighbor, neighbor_local_info.getTransforms().transforms.size(),
+				pose_estimates_from_neighbors[neighbor].trajectory_poses.empty() ? 0 : 
+					pose_estimates_from_neighbors[neighbor].trajectory_poses.begin()->first);
+
 			// create global map
 			auto globalMap = global_map::GlobalMap(local_info, neighbor_local_info,
 				inter_robot_measurements, pcm_threshold_, use_heuristics_);
+
+			auto transforms_size = loop_closures_transforms.transforms.size();
+			RCLCPP_INFO(this->get_logger(),
+				"[outliersFiltering] PCM Input Stats - Robot %d and %d:\n"
+				"  Loop closure transforms: %zu\n"
+				"  Local transforms R1: %zu\n"
+				"  Local transforms R2: %zu",
+				robot_id, neighbor,
+				transforms_size,
+				local_info.getTransforms().transforms.size(),
+				neighbor_local_info.getTransforms().transforms.size());
+
+			// Add after the PCM Input Stats logging
+			if (local_info.getTransforms().transforms.empty() || 
+				neighbor_local_info.getTransforms().transforms.empty()) {
+				RCLCPP_WARN(this->get_logger(),
+					"[outliersFiltering] Missing local transforms for PCM between robots %d and %d:\n"
+					"  Robot %d transforms: %zu\n"
+					"  Robot %d transforms: %zu\n"
+					"Skipping PCM.",
+					robot_id, neighbor,
+					robot_id, local_info.getTransforms().transforms.size(),
+					neighbor, neighbor_local_info.getTransforms().transforms.size());
+				continue;
+			}
 			
 			RCLCPP_INFO(this->get_logger(), 
-				"[outliersFiltering] Created global map for PCM between robots %d and %d", 
+				"[outliersFiltering] Starting PCM between robots %d and %d - Checking transform data",
+				robot_id, neighbor);
+			
+			// Print info about the global map before PCM
+			RCLCPP_INFO(this->get_logger(),
+				"[outliersFiltering] Attempting PCM for robots %d and %d",
 				robot_id, neighbor);
 
-			// Execute PCM with error handling
+			// Try PCM with additional error information
 			std::pair<std::vector<int>, int> max_clique_info;
 			try {
+				RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Starting pairwiseConsistencyMaximization");
 				max_clique_info = globalMap.pairwiseConsistencyMaximization();
+				RCLCPP_INFO(this->get_logger(), 
+					"[outliersFiltering] PCM completed with clique size: %d", 
+					max_clique_info.second);
+			} catch (const std::bad_alloc& e) {
+				RCLCPP_ERROR(this->get_logger(), 
+					"[outliersFiltering] Memory allocation failed during PCM for robots %d and %d: %s", 
+					robot_id, neighbor, e.what());
+				continue;
 			} catch (const std::exception& e) {
 				RCLCPP_ERROR(this->get_logger(), 
 					"[outliersFiltering] PCM failed for robots %d and %d: %s", 
