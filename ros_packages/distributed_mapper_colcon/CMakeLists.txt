@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.5)
 project(distributed_mapper_colcon)
 
 # Set C++ standard and build type
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_BUILD_TYPE "Release")
 
 # Find dependencies

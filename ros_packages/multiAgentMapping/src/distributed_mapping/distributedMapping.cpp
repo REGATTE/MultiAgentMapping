@@ -1,4 +1,5 @@
 #include "multiAgentMapping/distributed_mapping/distributedMapping.hpp"
+#include <sstream>
 
 void distributedMapping::globalDescriptorHandler(
 	const multi_agent_mapping::msg::GlobalDescriptor::SharedPtr& msg,
@@ -842,6 +843,12 @@ void distributedMapping::outliersFiltering() {
             const auto& trajectory = pose_estimates_from_neighbors.at(neighbor);
             auto& poses = trajectory.trajectory_poses;
 
+			// Add this debug check for pose count
+            RCLCPP_INFO(this->get_logger(),
+                "[outliersFiltering] Processing robot %d with %zu poses",
+                neighbor,
+                poses.size());
+
             // Sort poses by key to ensure proper ordering
             std::vector<std::pair<Key, graph_utils::TrajectoryPose>> sorted_poses;
             sorted_poses.reserve(poses.size());
@@ -865,6 +872,11 @@ void distributedMapping::outliersFiltering() {
                         transform.is_loopclosure = false;
                         transform.pose.pose = sorted_poses[i].second.pose.pose.between(sorted_poses[j].second.pose.pose);
                         transform.pose.covariance_matrix = graph_utils::FIXED_COVARIANCE;
+
+						// Add this debug log for transform creation
+                        RCLCPP_INFO(this->get_logger(), 
+                            "[outliersFiltering] Adding transform between poses %lu and %lu for robot %d",
+                            transform.i, transform.j, neighbor);
                         
                         neighbor_transforms.transforms.insert(
                             std::make_pair(std::make_pair(transform.i, transform.j), transform));
@@ -872,6 +884,14 @@ void distributedMapping::outliersFiltering() {
                 }
             }
 
+			// Add this check for transform count after creation
+                if (neighbor_transforms.transforms.size() < poses.size() * (poses.size() - 1) / 2) {
+                    RCLCPP_WARN(this->get_logger(),
+                        "[outliersFiltering] Insufficient transforms for robot %d: expected at least %zu, got %zu",
+                        neighbor,
+                        poses.size() * (poses.size() - 1) / 2,
+                        neighbor_transforms.transforms.size());
+                }
             // Create neighbor local info with computed transforms
             auto neighbor_local_info = robot_measurements::RobotLocalMap(
                 trajectory, neighbor_transforms, robot_local_map.getLoopClosures());
@@ -926,14 +946,30 @@ void distributedMapping::outliersFiltering() {
             // Try PCM with additional error information
             std::pair<std::vector<int>, int> max_clique_info;
             try {
-                auto globalMap = global_map::GlobalMap(local_info, neighbor_local_info,
-                    inter_robot_measurements, pcm_threshold_, use_heuristics_);
-                max_clique_info = globalMap.pairwiseConsistencyMaximization();
-            } catch (const std::exception& e) {
-                RCLCPP_ERROR(this->get_logger(), 
-                    "[outliersFiltering] PCM failed with error: %s", e.what());
-                continue;
-            }
+				RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Creating GlobalMap object...");
+				auto globalMap = global_map::GlobalMap(local_info, neighbor_local_info,
+					inter_robot_measurements, pcm_threshold_, use_heuristics_);
+				
+				RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Running PCM...");
+				max_clique_info = globalMap.pairwiseConsistencyMaximization();
+
+			} catch (const std::invalid_argument& e) {
+				RCLCPP_ERROR(this->get_logger(),
+					"[outliersFiltering] PCM failed - Invalid argument: %s", e.what());
+				continue;
+			} catch (const std::out_of_range& e) {
+				RCLCPP_ERROR(this->get_logger(),
+					"[outliersFiltering] PCM failed - Out of range error: %s", e.what());
+				continue;
+			} catch (const std::runtime_error& e) {
+				RCLCPP_ERROR(this->get_logger(),
+					"[outliersFiltering] PCM failed - Runtime error: %s", e.what());
+				continue;
+			} catch (const std::exception& e) {
+				RCLCPP_ERROR(this->get_logger(),
+					"[outliersFiltering] PCM failed with unexpected error: %s", e.what());
+				continue;
+			}
 
             std::vector<int> max_clique = max_clique_info.first;
 
@@ -1026,11 +1062,13 @@ void distributedMapping::outliersFiltering() {
  */
 void distributedMapping::computeOptimizationOrder() {
     // Clear any existing optimization order
+	RCLCPP_INFO(this->get_logger(), "[computeOptimizationOrder] Starting optimization order computation");
     optimization_order.clear();
 
     // Start the order with the prior owner of the optimization
     optimization_order.emplace_back(prior_owner);
 
+	RCLCPP_INFO(this->get_logger(), "[computeOptimizationOrder] Initial order starts with prior owner: %d", prior_owner);
     // Map to store the number of edges for each robot
     std::map<int, int> edges_num;
 
@@ -1038,6 +1076,7 @@ void distributedMapping::computeOptimizationOrder() {
     auto robots_consider = neighbors_within_communication_range;
     robots_consider.insert(robot_id);  // Ensure the current robot is included
 
+	RCLCPP_INFO(this->get_logger(), "[computeOptimizationOrder] Considering %zu robots for optimization", robots_consider.size());
     // Loop until no more robots can be added to the order
     while (true) {
         edges_num.clear();
@@ -1055,12 +1094,15 @@ void distributedMapping::computeOptimizationOrder() {
                 // Only consider robots with at least one edge connecting to the current order
                 if (robot_edges_num != 0) {
                     edges_num.insert(std::make_pair(robot0, robot_edges_num));
+					RCLCPP_DEBUG(this->get_logger(), "[computeOptimizationOrder] Robot %d has %d edges with current order", 
+                        robot0, robot_edges_num);
                 }
             }
         }
 
         // If no more robots can be added, break the loop
         if (edges_num.empty()) {
+			RCLCPP_INFO(this->get_logger(), "[computeOptimizationOrder] No more robots to add to optimization order");
             break;
         }
 
@@ -1076,6 +1118,8 @@ void distributedMapping::computeOptimizationOrder() {
 
         // Add the robot with the most edges to the optimization order
         optimization_order.emplace_back(maximum_robot);
+		RCLCPP_INFO(this->get_logger(), "[computeOptimizationOrder] Added robot %d to order with %d edges", 
+            maximum_robot, maximum_edge_num);
 
         // Remove the robot from consideration in the current loop iteration
         edges_num.erase(maximum_robot);
@@ -1087,7 +1131,16 @@ void distributedMapping::computeOptimizationOrder() {
         if (optimization_order[i] == robot_id) {
             in_order = true;
         }
+	}
+	// Log final optimization order
+    std::stringstream order_str;  // Added declaration here
+    for (const auto& robot : optimization_order) {
+        order_str << robot << " ";
     }
+	RCLCPP_INFO(this->get_logger(), "[computeOptimizationOrder] Final optimization order: %s", order_str.str().c_str());
+    RCLCPP_INFO(this->get_logger(), "[computeOptimizationOrder] Current robot (ID: %d) is %s the optimization order", 
+        robot_id, in_order ? "in" : "not in");
+
 }
 
 void distributedMapping::initializePoseGraphOptimization(){
