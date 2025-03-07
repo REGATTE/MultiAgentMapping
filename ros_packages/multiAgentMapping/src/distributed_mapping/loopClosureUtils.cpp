@@ -80,6 +80,10 @@ void distributedMapping::loopInfoHandler(
 			// add loop factor
 			local_pose_graph->add(factor);
 			local_pose_graph_no_filtering->add(factor);
+            RCLCPP_INFO(this->get_logger(),
+                "[LoopClosureUtils] Added loop factor between poses %c%d and %c%d",
+                Symbol(msg->robot0 + 'a').chr(), msg->index0,
+                Symbol(msg->robot1 + 'a').chr(), msg->index1);
 			// enable distributed mapping
 			sent_start_optimization_flag = true;
 

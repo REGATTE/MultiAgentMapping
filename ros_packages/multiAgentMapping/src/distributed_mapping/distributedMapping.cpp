@@ -89,12 +89,23 @@ void distributedMapping::neighborRotationHandler(
 	for(int i = 0; i < msg->pose_id.size(); i++){
 		Symbol symbol((id + 'a'), msg->pose_id[i]); // Create a symbol representing the pose of the neighboring robot
 		// Check if pose graph optimization (PCM) is disabled or if the pose is part of the current optimization
+		RCLCPP_INFO(this->get_logger(),
+			"[neighborRotationHandler] Checking pose %c%lu - PCM enabled: %d, Key in optimization set: %d",
+			symbol.chr(), symbol.index(),
+			use_pcm_,
+			other_robot_keys_for_optimization.find(symbol.key()) != other_robot_keys_for_optimization.end());
 		if(!use_pcm_ || other_robot_keys_for_optimization.find(symbol.key()) != other_robot_keys_for_optimization.end()){
 			// Extract the 3x3 rotation matrix from the message
 			Vector rotation_matrix(9);
 			rotation_matrix << msg->estimate[0 + 9*i], msg->estimate[1 + 9*i], msg->estimate[2 + 9*i],
 				msg->estimate[3 + 9*i], msg->estimate[4 + 9*i], msg->estimate[5 + 9*i],
 				msg->estimate[6 + 9*i], msg->estimate[7 + 9*i], msg->estimate[8 + 9*i];
+			RCLCPP_INFO(this->get_logger(), 
+				"RECEIVED Rotation from robot %d - Symbol: %c%lu Matrix: [%.3f, %.3f, %.3f; %.3f, %.3f, %.3f; %.3f, %.3f, %.3f]",
+				id, symbol.chr(), symbol.index(),
+				rotation_matrix[0], rotation_matrix[1], rotation_matrix[2],
+				rotation_matrix[3], rotation_matrix[4], rotation_matrix[5],
+				rotation_matrix[6], rotation_matrix[7], rotation_matrix[8]);
 			// Update the optimizer with the neighbor's rotation estimate
 			optimizer->updateNeighborLinearizedRotations(symbol.key(), rotation_matrix);
 		} else {
@@ -939,6 +950,34 @@ void distributedMapping::outliersFiltering() {
                 loop_closures_transforms.transforms.size(),
                 local_info.getTransforms().transforms.size(),
                 neighbor_transforms.transforms.size());
+			/*
+			RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Loop closure transforms between robots:");
+				for(const auto& transform : loop_closures_transforms.transforms) {
+					Symbol symbol_i(transform.second.i);
+					Symbol symbol_j(transform.second.j);
+					RCLCPP_INFO(this->get_logger(), "  Transform: %c%d -> %c%d",
+						symbol_i.chr(), (int)symbol_i.index(),
+						symbol_j.chr(), (int)symbol_j.index());
+				}
+
+			RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Local transforms for Robot %d:", robot_id);
+			for(const auto& transform : local_info.getTransforms().transforms) {
+				Symbol symbol_i(transform.second.i);
+				Symbol symbol_j(transform.second.j);
+				RCLCPP_INFO(this->get_logger(), "  Transform: %c%d -> %c%d",
+					symbol_i.chr(), (int)symbol_i.index(),
+					symbol_j.chr(), (int)symbol_j.index());
+			}
+
+			RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Local transforms for Robot %d:", neighbor);
+			for(const auto& transform : neighbor_transforms.transforms) {
+				Symbol symbol_i(transform.second.i);
+				Symbol symbol_j(transform.second.j);
+				RCLCPP_INFO(this->get_logger(), "  Transform: %c%d -> %c%d",
+					symbol_i.chr(), (int)symbol_i.index(),
+					symbol_j.chr(), (int)symbol_j.index());
+			}
+			*/
 
             RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Starting PCM between robots %d and %d - Checking transform data",
                 robot_id, neighbor);
@@ -972,9 +1011,20 @@ void distributedMapping::outliersFiltering() {
 			}
 
             std::vector<int> max_clique = max_clique_info.first;
+			auto loopclosures_ids = optimizer->loopclosureEdge();
+			RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Max clique vertices:");
+			for(const auto& vertex_idx : max_clique) {
+				auto loopclosure_factor = boost::dynamic_pointer_cast<BetweenFactor<Pose3>>(
+					optimizer->currentGraph().at(loopclosures_ids[vertex_idx]));
+				Symbol symbol_i(loopclosure_factor->keys().at(0));
+				Symbol symbol_j(loopclosure_factor->keys().at(1));
+				RCLCPP_INFO(this->get_logger(), "  Vertex %d: %c%d -> %c%d",
+					vertex_idx,
+					symbol_i.chr(), (int)symbol_i.index(),
+					symbol_j.chr(), (int)symbol_j.index());
+			}
 
             // get loopclosure ids
-            auto loopclosures_ids = optimizer->loopclosureEdge();
             std::vector<int> rejected_loopclosure_ids;
             rejected_loopclosure_ids.reserve(1000);
             std::set<std::pair<Key, Key>> accepted_key_pairs, rejected_key_pairs;
@@ -1027,11 +1077,25 @@ void distributedMapping::outliersFiltering() {
             RCLCPP_INFO(this->get_logger(), "Update loopclosure ids done");
 
             // save accepted pair
+			RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Processing accepted key pairs for robot %d:", robot_id);
             for(const auto& accepted_pair : accepted_key_pairs) {
+				Symbol symbol1(accepted_pair.first);
+				Symbol symbol2(accepted_pair.second);
+				RCLCPP_INFO(this->get_logger(), 
+					"[outliersFiltering] Considering pair: %c%lu -> %c%lu", 
+					symbol1.chr(), symbol1.index(),
+					symbol2.chr(), symbol2.index());
                 accepted_keys.insert(accepted_pair);
+
                 if(Symbol(accepted_pair.first).chr() == char(robot_id + 'a')) {
+					RCLCPP_INFO(this->get_logger(), 
+						"[outliersFiltering] Adding to optimization set: %c%lu (second key)", 
+						symbol2.chr(), symbol2.index());
                     other_robot_keys_for_optimization.insert(accepted_pair.second);
                 } else {
+					RCLCPP_INFO(this->get_logger(), 
+						"[outliersFiltering] Adding to optimization set: %c%lu (first key)", 
+						symbol1.chr(), symbol1.index());
                     other_robot_keys_for_optimization.insert(accepted_pair.first);
                 }
             }
@@ -1187,6 +1251,12 @@ bool distributedMapping::rotationEstimationStoppingBarrier(){
 			robots[other_robot].estimate_msg.pose_id.push_back(separator_symbols.second.index());
 			// rotation estimates
 			Vector rotation_estimate = optimizer->linearizedRotationAt(separator_symbols.second.key());
+			RCLCPP_INFO(this->get_logger(), 
+				"SENDING Rotation to robot %d - Symbol: %c%lu Matrix: [%.3f, %.3f, %.3f; %.3f, %.3f, %.3f; %.3f, %.3f, %.3f]",
+				other_robot, separator_symbols.second.chr(), separator_symbols.second.index(),
+				rotation_estimate[0], rotation_estimate[1], rotation_estimate[2],
+				rotation_estimate[3], rotation_estimate[4], rotation_estimate[5],
+				rotation_estimate[6], rotation_estimate[7], rotation_estimate[8]);
 			for(int it = 0; it < 9; it++){
 				robots[other_robot].estimate_msg.estimate.push_back(rotation_estimate[it]);
 			}
@@ -1211,17 +1281,25 @@ bool distributedMapping::rotationEstimationStoppingBarrier(){
 		all_finished_rotation_estimation &= (neighbor_state[neighbor] == OptimizerState::PoseEstimation);
 	}
 	if(all_finished_rotation_estimation){
+		RCLCPP_INFO(this->get_logger(), 
+            "\n=============== rotation stopping estimation barrier complete [all_finished_rotation_estimation]===============");
 		return true;
 	}
 
 	// neighbors have finished rotation estimation
 	bool stop_rotation_estimation = rotation_estimate_finished;
+	RCLCPP_INFO(this->get_logger(), "Rotation Stop Check - Robot %d: local_finished=%d", 
+    	robot_id, rotation_estimate_finished);
 	for(int i = 0; i < optimization_order.size(); i++){
 		int otherRobot = optimization_order[i];
 		if(otherRobot != robot_id){
 			stop_rotation_estimation &= neighbors_rotation_estimate_finished[otherRobot] || 
 				neighbor_state[otherRobot] > optimizer_state;
 		}
+	}
+	if(stop_rotation_estimation){
+		RCLCPP_INFO(this->get_logger(), 
+            "\n=============== rotation stopping estimation barrier complete [stop_rotation_estimation]===============");
 	}
 	return stop_rotation_estimation;
 }
