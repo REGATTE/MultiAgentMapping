@@ -83,7 +83,31 @@ void distributedMapping::neighborRotationHandler(
 	if(msg->receiver_id != robot_id || optimizer_state != OptimizerState::RotationEstimation){
 		return;
 	}
+	
+	bool all_keys_valid = true;
+    int valid_keys_count = 0;
 
+	// First pass: validate all keys and log status
+    for(int i = 0; i < msg->pose_id.size(); i++) {
+        Symbol symbol((id + 'a'), msg->pose_id[i]);
+        bool is_valid = !use_pcm_ || 
+            other_robot_keys_for_optimization.find(symbol.key()) != other_robot_keys_for_optimization.end();
+        
+        RCLCPP_INFO(this->get_logger(),
+            "[neighborRotationHandler] Checking pose %c%lu - PCM enabled: %d, Key in optimization set: %d",
+            symbol.chr(), symbol.index(), use_pcm_, is_valid);
+
+        if(!is_valid) {
+            all_keys_valid = false;
+            RCLCPP_WARN(this->get_logger(), 
+                "[neighborRotationHandler] Key %c%lu not in optimization set - skipping",
+                symbol.chr(), symbol.index());
+        } else {
+            valid_keys_count++;
+        }
+    }
+
+	// Second pass: update valid rotation estimates
 	// update neighbor rotation estimates
 	// Iterate through all the pose IDs provided in the incoming message
 	for(int i = 0; i < msg->pose_id.size(); i++){
@@ -121,8 +145,10 @@ void distributedMapping::neighborRotationHandler(
 		// used only with flagged initialization
 		// Mark the neighboring robot as initialized (if flagged initialization is used)
 		optimizer->updateNeighboringRobotInitialized(char(id + 'a'), msg->initialized);
+		// Only mark as finished if we have enough valid keys (e.g., >50%)
+        bool sufficient_valid_keys = (valid_keys_count >= msg->pose_id.size() / 2);
 		// Mark whether the neighboring robot has completed its rotation estimation
-		neighbors_rotation_estimate_finished[id] = msg->estimation_done;
+		neighbors_rotation_estimate_finished[id] = msg->estimation_done && sufficient_valid_keys;
 	}
 	// Log progress of rotation estimation
 	RCLCPP_INFO(this->get_logger(), 
