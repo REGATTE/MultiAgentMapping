@@ -135,7 +135,6 @@ void distributedMapping::neighborRotationHandler(
 		} else {
 			// If the key does not exist, log a warning and stop the current optimization
 			RCLCPP_INFO(this->get_logger(), "Stop optimization %d. Key %c %lu doesn't exist.", robot_id, symbol.chr(), symbol.index());
-			abortOptimization(false);
 		}
 	}
 
