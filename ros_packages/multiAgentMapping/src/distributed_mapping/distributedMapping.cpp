@@ -1366,30 +1366,61 @@ void distributedMapping::failSafeCheck(){
 }
 
 void distributedMapping::initializePoseEstimation(){
+	RCLCPP_INFO(this->get_logger(), "\n=============== Initializing Pose Estimation ===============");
+
+	RCLCPP_INFO(this->get_logger(), "[initializePoseEstimation] Converting linearized rotations to poses");
 	optimizer->convertLinearizedRotationToPoses();
 	Values neighbors = optimizer->neighbors();
+	RCLCPP_INFO(this->get_logger(), "[initializePoseEstimation] Processing %lu neighbor values", neighbors.size());
 	for(const Values::ConstKeyValuePair& key_value: neighbors){
 		Key key = key_value.key;
+		Symbol symbol(key);
+        
+        RCLCPP_INFO(this->get_logger(), 
+            "[initializePoseEstimation] Processing neighbor key: %c%lu", 
+            symbol.chr(), symbol.index());
 		// pick linear rotation estimate
 		VectorValues neighbor_estimate_rot_lin;
-		neighbor_estimate_rot_lin.insert(key, optimizer->neighborsLinearizedRotationsAt(key));
+        Vector rotation = optimizer->neighborsLinearizedRotationsAt(key);
+        neighbor_estimate_rot_lin.insert(key, rotation);
+        
+        RCLCPP_INFO(this->get_logger(), 
+            "[initializePoseEstimation] Rotation estimate for %c%lu: [%.3f, %.3f, %.3f; %.3f, %.3f, %.3f; %.3f, %.3f, %.3f]",
+            symbol.chr(), symbol.index(),
+            rotation[0], rotation[1], rotation[2],
+            rotation[3], rotation[4], rotation[5],
+            rotation[6], rotation[7], rotation[8]);
 		// make a pose out of it
 		Values neighbor_rot_estimate = 
 			InitializePose3::normalizeRelaxedRotations(neighbor_estimate_rot_lin);
 		Values neighbor_pose_estimate = 
 			distributed_mapper::evaluation_utils::pose3WithZeroTranslation(neighbor_rot_estimate);
 		// store it
-		optimizer->updateNeighbor(key, neighbor_pose_estimate.at<Pose3>(key));
+        Pose3 pose = neighbor_pose_estimate.at<Pose3>(key);
+        optimizer->updateNeighbor(key, pose);
+        
+        RCLCPP_INFO(this->get_logger(), 
+            "[initializePoseEstimation] Updated neighbor pose for %c%lu - Translation: [%.3f, %.3f, %.3f]",
+            symbol.chr(), symbol.index(),
+            pose.translation().x(),
+            pose.translation().y(),
+            pose.translation().z());
 	}
 
+	RCLCPP_INFO(this->get_logger(), "[initializePoseEstimation] Resetting initialization flags");
 	// reset flags for flagged initialization.
 	optimizer->updateInitialized(false);
 	optimizer->clearNeighboringRobotInit();
 	estimation_done = false;
+
+	int reset_count = 0;
 	for(auto& neighbor_done : neighbors_estimation_done){
 		neighbor_done.second = false;
+		reset_count++;
 	}
+	RCLCPP_INFO(this->get_logger(), "[initializePoseEstimation] Reset %d neighbor estimation flags", reset_count);
 	optimizer->resetLatestChange();
+	RCLCPP_INFO(this->get_logger(), "\n=============== Pose Estimation Initialization Complete ===============");
 }
 
 bool distributedMapping::poseEstimationStoppingBarrier(){
