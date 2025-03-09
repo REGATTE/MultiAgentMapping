@@ -227,7 +227,7 @@ distributedMapping::distributedMapping(const rclcpp::NodeOptions & options)
     kdtree_history_keyposes.reset(new pcl::KdTreeFLANN<PointPose3D>());
 
     // noise model
-    odometry_noise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
+    odometry_noise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-6, 1e-6, 1e-6).finished());
 	prior_noise = noiseModel::Isotropic::Variance(6, 1e-12);
 
     // isam2 params init
@@ -235,7 +235,8 @@ distributedMapping::distributedMapping(const rclcpp::NodeOptions & options)
     isam2_parameters.relinearizeThreshold = 0.1;
     isam2_parameters.relinearizeSkip = 1;
     isam2_parameters.factorization = ISAM2Params::CHOLESKY;
-    isam2_parameters.cacheLinearizedFactors = true;
+    isam2_parameters.cacheLinearizedFactors = false;
+    isam2_parameters.enableDetailedResults = true;
     isam2 = new ISAM2(isam2_parameters);
 
     keyposes_cloud_3d.reset(new pcl::PointCloud<PointPose3D>());

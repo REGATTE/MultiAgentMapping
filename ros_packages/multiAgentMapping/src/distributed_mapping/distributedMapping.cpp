@@ -101,6 +101,18 @@ void distributedMapping::neighborRotationHandler(
 						symbol.chr(), symbol.index());
 					continue;
 				}
+				// Check orthogonality
+				Matrix3 R;
+				R << rotation_matrix[0], rotation_matrix[1], rotation_matrix[2],
+					rotation_matrix[3], rotation_matrix[4], rotation_matrix[5],
+					rotation_matrix[6], rotation_matrix[7], rotation_matrix[8];
+
+				if(std::abs((R.transpose() * R - Matrix3::Identity()).norm()) > 1e-3) {
+					RCLCPP_WARN(this->get_logger(), 
+						"Non-orthogonal rotation matrix received for symbol %c%lu", 
+						symbol.chr(), symbol.index());
+					continue;
+				}
 
 				RCLCPP_DEBUG(this->get_logger(), 
 					"Updating rotation for symbol %c%lu with matrix norm: %.6f",
@@ -242,6 +254,24 @@ void distributedMapping::neighborPoseHandler(
 	const multi_agent_mapping::msg::NeighborEstimate::SharedPtr& msg,
 	int id)
 {
+	RCLCPP_INFO(this->get_logger(), 
+        "\n=============== Processing Neighbor Pose Update from Robot %d ===============", id);
+	RCLCPP_INFO(this->get_logger(),
+        "[neighborPoseHandler] Received from robot %d - initialized=%d, estimation_done=%d, poses=%lu",
+        id, msg->initialized, msg->estimation_done, msg->pose_id.size());
+	// Log incoming pose vectors
+    for(int i = 0; i < msg->pose_id.size(); i++) {
+        Vector pose_vector(6);
+        pose_vector << msg->estimate[0 + 6*i], msg->estimate[1 + 6*i], msg->estimate[2 + 6*i],
+            msg->estimate[3 + 6*i], msg->estimate[4 + 6*i], msg->estimate[5 + 6*i];
+            
+        RCLCPP_INFO(this->get_logger(),
+            "[neighborPoseHandler] Pose %d from robot %d - ID: %u Vector: [%.3f, %.3f, %.3f, %.3f, %.3f, %.3f]",
+            i, id, msg->pose_id[i],
+            pose_vector[0], pose_vector[1], pose_vector[2],
+            pose_vector[3], pose_vector[4], pose_vector[5]);
+    }
+
 	// Ignore the message if it is not intended for this robot or if the robot is not in the pose estimation phase
 	if(msg->receiver_id != robot_id || optimizer_state != OptimizerState::PoseEstimation){
 		return;
@@ -281,18 +311,55 @@ void distributedMapping::neighborPoseHandler(
 		optimization_order.size() - 1
 	);
 
+	for(int i = 0; i < msg->pose_id.size(); i++) {
+		Vector pose_vector(6);
+		for(int j = 0; j < 6; j++) {
+			pose_vector[j] = msg->estimate[j + 6*i];
+			if(std::isnan(pose_vector[j]) || std::isinf(pose_vector[j])) {
+				RCLCPP_ERROR(this->get_logger(),
+					"[neighborPoseHandler] Invalid pose value detected for pose %d: %f",
+					i, pose_vector[j]);
+				return;
+			}
+		}
+	}
+
 	// perform pose estimation
 	if(optimizer->getNeighboringRobotsInit().size() == optimization_order.size() - 1){
+		RCLCPP_INFO(this->get_logger(),
+            "[neighborPoseHandler] Starting pose estimation - Robot %d has all required neighbors",
+            robot_id);
+            
+        // Log current state before estimation
+        RCLCPP_INFO(this->get_logger(),
+            "[neighborPoseHandler] Pre-estimation state - estimation_done=%d, current_iteration=%d",
+            estimation_done, current_pose_estimate_iteration);
 		if(!estimation_done){
 			// pose estimation
 			try{
 				optimizer->estimatePoses();
+
+				double change = optimizer->latestChange();
+				if(std::isnan(change) || std::isinf(change)) {
+					RCLCPP_ERROR(this->get_logger(),
+						"[neighborPoseHandler] Invalid change value detected: %f", change);
+					abortOptimization(true);
+					return;
+				}
+
 				optimizer->updatePoses();
 				optimizer->updateInitialized(true);
 				current_pose_estimate_iteration++;
+
+				RCLCPP_INFO(this->get_logger(),
+                    "[neighborPoseHandler] Convergence check - iterations=%d/%d, change=%.6f (threshold=%.6f)",
+                    current_pose_estimate_iteration,
+                    optimization_maximum_iteration_,
+                    optimizer->latestChange(),
+                    pose_estimate_change_threshold_);
+
 			} catch(const std::exception& ex){
 				RCLCPP_ERROR(this->get_logger(), "[neighborPoseHandler] - Stopping pose estimation %d: %s.", robot_id, ex.what());
-				std::cerr << "[neighborPoseHandler] - Stopping pose estimation " << robot_id << ": " << ex.what() << std::endl;
 				abortOptimization(true);
 			}
 
@@ -314,7 +381,9 @@ void distributedMapping::neighborPoseHandler(
 			Key first_key = KeyVector(initial_values->keys()).at(0);
 			anchor_point = initial_values->at<Pose3>(first_key).translation();
 			anchor_offset = anchor_point - (optimizer->currentEstimate().at<Pose3>(first_key).translation() + Point3(optimizer->linearizedPoses().at(first_key).tail(3)));
-
+			RCLCPP_INFO(this->get_logger(),
+                    "[neighborPoseHandler] Anchor offset calculated - [%.3f, %.3f, %.3f]",
+                    anchor_offset.x(), anchor_offset.y(), anchor_offset.z());
 			// check neigbors pose optimization state
 			bool send_flag = estimation_done;
 			for(int i = 0; i < optimization_order.size(); i++){
@@ -1404,6 +1473,54 @@ void distributedMapping::initializePoseEstimation(){
 }
 
 bool distributedMapping::poseEstimationStoppingBarrier(){
+	RCLCPP_INFO(this->get_logger(), "\n=============== Checking Pose Estimation Stopping Barrier ===============");
+    
+    // Check convergence if estimation is ongoing
+    if(!pose_estimate_finished && current_pose_estimate_iteration < optimization_maximum_iteration_) {
+        double change = optimizer->latestChange();
+        
+        // Validate change value
+        if(std::isnan(change) || std::isinf(change)) {
+            RCLCPP_ERROR(this->get_logger(),
+                "[poseEstimationStoppingBarrier] Invalid change detected: %f", change);
+            abortOptimization(true);
+            return false;
+        }
+
+        // Check for instability
+        if(change > 1e6) {
+            RCLCPP_WARN(this->get_logger(),
+                "[poseEstimationStoppingBarrier] Large change detected: %f - Resetting iteration",
+                change);
+            current_pose_estimate_iteration--;
+            return false;
+        }
+
+        // Check if converged
+        if(change <= pose_estimate_change_threshold_) {
+            RCLCPP_INFO(this->get_logger(),
+                "[poseEstimationStoppingBarrier] Convergence reached - change: %.6f <= threshold: %.6f",
+                change, pose_estimate_change_threshold_);
+            pose_estimate_finished = true;
+            estimation_done = true;
+        }
+    }
+
+    // Log current state
+    RCLCPP_INFO(this->get_logger(), 
+        "[poseEstimationStoppingBarrier] Robot %d - Current state: pose_estimate_start=%d, pose_estimate_finished=%d",
+        robot_id, pose_estimate_start, pose_estimate_finished);
+	
+	// Add detailed logging for neighbor states
+    for(const auto& neighbor : neighbors_within_communication_range) {
+        RCLCPP_INFO(this->get_logger(),
+            "[poseEstimationStoppingBarrier] Neighbor %d state: %d, pose_finished=%d, estimation_done=%d",
+            neighbor,
+            neighbor_state[neighbor],
+            neighbors_pose_estimate_finished[neighbor],
+            neighbors_estimation_done[neighbor]);
+    }
+
 	// check neighbor state
 	bool in_turn = true;
 	// neighboring_robots = optimizer->getNeighboringChars();
@@ -1412,11 +1529,20 @@ bool distributedMapping::poseEstimationStoppingBarrier(){
 			in_turn &= (neighbor_state[optimization_order[i]] == OptimizerState::PoseEstimation);
 		}
 	}
+	RCLCPP_INFO(this->get_logger(),
+        "[poseEstimationStoppingBarrier] In-turn check result: %d", in_turn);
 	// send pose estimate to the pre-order robot
 	if(in_turn && !pose_estimate_start){
+		RCLCPP_INFO(this->get_logger(), 
+            "[poseEstimationStoppingBarrier] Starting to send pose estimates - Robot %d", 
+            robot_id);
 		pose_estimate_start = true;
 		// clear buffer
 		for(const auto& neighbor : neighbors_within_communication_range) {
+			RCLCPP_INFO(this->get_logger(),
+                "[poseEstimationStoppingBarrier] Preparing estimates for robot %d - Current poses: %lu",
+                neighbor,
+                robots[neighbor].estimate_msg.pose_id.size());
 			robots[neighbor].estimate_msg.pose_id.clear();
 			robots[neighbor].estimate_msg.estimate.clear();
 			robots[neighbor].estimate_msg.anchor_offset.clear();
@@ -1455,8 +1581,14 @@ bool distributedMapping::poseEstimationStoppingBarrier(){
 			robots[other_robot].estimate_msg.receiver_id = other_robot;
 			robots[other_robot].estimate_msg.estimation_done = pose_estimate_finished;
 			robots[robot_id].pub_neighbor_pose_estimates->publish(robots[other_robot].estimate_msg);
-
 		}
+		// After sending estimates
+        for(const auto& neighbor : neighbors_within_communication_range) {
+            RCLCPP_INFO(this->get_logger(),
+                "[poseEstimationStoppingBarrier] Sent %lu pose estimates to robot %d",
+                robots[neighbor].estimate_msg.pose_id.size(),
+                neighbor);
+        }
 	}
 
 	// check if others have ended optimization
@@ -1480,6 +1612,11 @@ bool distributedMapping::poseEstimationStoppingBarrier(){
 				neighbor_state[other_robot] > optimizer_state;
 		}
 	}
+	if(stop_pose_estimation) {
+        RCLCPP_INFO(this->get_logger(), 
+            "[poseEstimationStoppingBarrier] Stopping pose estimation - All conditions met for robot %d",
+            robot_id);
+    }
 	return stop_pose_estimation;
 }
 
