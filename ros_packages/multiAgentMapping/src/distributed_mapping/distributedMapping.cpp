@@ -160,6 +160,19 @@ void distributedMapping::neighborRotationHandler(
 	// all other robots is finished rotation optimization
 	// Check if all neighbors have completed their initialization (ready to proceed with rotation estimation)
 	if(optimizer->getNeighboringRobotsInit().size() == optimization_order.size() - 1){
+		KeyVector all_keys = KeyVector(initial_values->keys());
+
+		const int segment_size = 10;
+		for(int i = 0; i < all_keys.size(); i += segment_size){
+			Symbol first_pose_symbol(all_keys[i]);
+			auto segment_prior_noise = noiseModel::Diagonal::Sigmas(
+				(Vector(6) << 1e-6, 1e-6, 1e-6, 1e-6, 1e-6, 1e-6).finished()
+			);
+			NonlinearFactor::shared_ptr segment_prior(new PriorFactor<Pose3>(first_pose_symbol, initial_values->at<Pose3>(first_pose_symbol), segment_prior_noise));
+			local_pose_graph->add(segment_prior);
+			local_pose_graph_no_filtering->add(segment_prior);
+		}
+
 		if(!estimation_done){
 			try{
 				// Perform the rotation estimation using the optimizer

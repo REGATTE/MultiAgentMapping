@@ -234,6 +234,8 @@ distributedMapping::distributedMapping(const rclcpp::NodeOptions & options)
     ISAM2Params isam2_parameters;
     isam2_parameters.relinearizeThreshold = 0.1;
     isam2_parameters.relinearizeSkip = 1;
+    isam2_parameters.factorization = ISAM2Params::CHOLESKY;
+    isam2_parameters.cacheLinearizedFactors = true;
     isam2 = new ISAM2(isam2_parameters);
 
     keyposes_cloud_3d.reset(new pcl::PointCloud<PointPose3D>());
