@@ -78,122 +78,90 @@ void distributedMapping::neighborRotationHandler(
 	const multi_agent_mapping::msg::NeighborEstimate::SharedPtr& msg,
 	int id)
 {
-	// Ignore the message if it is not intended for this robot or 
-	// if the robot is not in the rotation estimation phase
-	if(msg->receiver_id != robot_id || optimizer_state != OptimizerState::RotationEstimation){
-		return;
-	}
-	
-	bool all_keys_valid = true;
-    int valid_keys_count = 0;
-
-	// First pass: validate all keys and log status
-    for(int i = 0; i < msg->pose_id.size(); i++) {
-        Symbol symbol((id + 'a'), msg->pose_id[i]);
-        bool is_valid = !use_pcm_ || 
-            other_robot_keys_for_optimization.find(symbol.key()) != other_robot_keys_for_optimization.end();
-        
-        RCLCPP_INFO(this->get_logger(),
-            "[neighborRotationHandler] Checking pose %c%lu - PCM enabled: %d, Key in optimization set: %d",
-            symbol.chr(), symbol.index(), use_pcm_, is_valid);
-
-        if(!is_valid) {
-            all_keys_valid = false;
-            RCLCPP_WARN(this->get_logger(), 
-                "[neighborRotationHandler] Key %c%lu not in optimization set - skipping",
-                symbol.chr(), symbol.index());
-        } else {
-            valid_keys_count++;
-        }
-    }
-
-	// Second pass: update valid rotation estimates
-	// update neighbor rotation estimates
-	// Iterate through all the pose IDs provided in the incoming message
-	for(int i = 0; i < msg->pose_id.size(); i++){
-		Symbol symbol((id + 'a'), msg->pose_id[i]); // Create a symbol representing the pose of the neighboring robot
-		// Check if pose graph optimization (PCM) is disabled or if the pose is part of the current optimization
-		RCLCPP_INFO(this->get_logger(),
-			"[neighborRotationHandler] Checking pose %c%lu - PCM enabled: %d, Key in optimization set: %d",
-			symbol.chr(), symbol.index(),
-			use_pcm_,
-			other_robot_keys_for_optimization.find(symbol.key()) != other_robot_keys_for_optimization.end());
-		if(!use_pcm_ || other_robot_keys_for_optimization.find(symbol.key()) != other_robot_keys_for_optimization.end()){
-			// Extract the 3x3 rotation matrix from the message
-			Vector rotation_matrix(9);
-			rotation_matrix << msg->estimate[0 + 9*i], msg->estimate[1 + 9*i], msg->estimate[2 + 9*i],
-				msg->estimate[3 + 9*i], msg->estimate[4 + 9*i], msg->estimate[5 + 9*i],
-				msg->estimate[6 + 9*i], msg->estimate[7 + 9*i], msg->estimate[8 + 9*i];
-			RCLCPP_INFO(this->get_logger(), 
-				"RECEIVED Rotation from robot %d - Symbol: %c%lu Matrix: [%.3f, %.3f, %.3f; %.3f, %.3f, %.3f; %.3f, %.3f, %.3f]",
-				id, symbol.chr(), symbol.index(),
-				rotation_matrix[0], rotation_matrix[1], rotation_matrix[2],
-				rotation_matrix[3], rotation_matrix[4], rotation_matrix[5],
-				rotation_matrix[6], rotation_matrix[7], rotation_matrix[8]);
-			// Update the optimizer with the neighbor's rotation estimate
-			optimizer->updateNeighborLinearizedRotations(symbol.key(), rotation_matrix);
-		} else {
-			// If the key does not exist, log a warning and stop the current optimization
-			RCLCPP_INFO(this->get_logger(), "Stop optimization %d. Key %c %lu doesn't exist.", robot_id, symbol.chr(), symbol.index());
-		}
-	}
-
-	// update neighbor flags
-	// If we are still in the rotation estimation phase, update neighbor flags and progress tracking
-	if(optimizer_state == OptimizerState::RotationEstimation){
-		// used only with flagged initialization
-		// Mark the neighboring robot as initialized (if flagged initialization is used)
-		optimizer->updateNeighboringRobotInitialized(char(id + 'a'), msg->initialized);
-		// Only mark as finished if we have enough valid keys (e.g., >50%)
-        bool sufficient_valid_keys = (valid_keys_count >= msg->pose_id.size() / 2);
-		// Mark whether the neighboring robot has completed its rotation estimation
-		neighbors_rotation_estimate_finished[id] = msg->estimation_done && sufficient_valid_keys;
-	}
-	// Log progress of rotation estimation
-	RCLCPP_INFO(this->get_logger(), 
-		"neighborRotationHandler<%d> from robot %d done? %d (%lu/%lu)", 
-		robot_id, id, msg->estimation_done, 
-		optimizer->getNeighboringRobotsInit().size(), 
-		optimization_order.size() - 1);
-
-	// perform rotation optimization
-	// all other robots is finished rotation optimization
-	// Check if all neighbors have completed their initialization (ready to proceed with rotation estimation)
-	if(optimizer->getNeighboringRobotsInit().size() == optimization_order.size() - 1){
-		KeyVector all_keys = KeyVector(initial_values->keys());
-
-		const int segment_size = 10;
-		for(int i = 0; i < all_keys.size(); i += segment_size){
-			Symbol first_pose_symbol(all_keys[i]);
-			auto segment_prior_noise = noiseModel::Diagonal::Sigmas(
-				(Vector(6) << 1e-6, 1e-6, 1e-6, 1e-6, 1e-6, 1e-6).finished()
-			);
-			NonlinearFactor::shared_ptr segment_prior(new PriorFactor<Pose3>(first_pose_symbol, initial_values->at<Pose3>(first_pose_symbol), segment_prior_noise));
-			local_pose_graph->add(segment_prior);
-			local_pose_graph_no_filtering->add(segment_prior);
+		// Early return if not the intended receiver or wrong state
+		if(msg->receiver_id != robot_id || optimizer_state != OptimizerState::RotationEstimation) {
+			return;
 		}
 
-		if(!estimation_done){
-			try{
-				// Perform the rotation estimation using the optimizer
-				optimizer->estimateRotation();			// Estimate the rotation
-				optimizer->updateRotation();			// Apply the updated rotation
-				optimizer->updateInitialized(true);		// Mark the optimizer as initialized
-				current_rotation_estimate_iteration++;	// Increment the iteration counter
-			} catch(const std::exception& ex){
-				// Log any errors encountered during rotation estimation and abort optimization
-				RCLCPP_ERROR(this->get_logger(), "[neighborRotationHandler] - Stopping rotation optimization %d: %s.", robot_id, ex.what());
+		// Update neighbor rotation estimates
+		for(int i = 0; i < msg->pose_id.size(); i++) {
+			Symbol symbol((id + 'a'), msg->pose_id[i]);
+			
+			// Check if pose should be included in optimization
+			if(!use_pcm_ || other_robot_keys_for_optimization.find(symbol.key()) != other_robot_keys_for_optimization.end()) {
+				// Extract rotation matrix
+				Vector rotation_matrix(9);
+				for(int j = 0; j < 9; j++) {
+					rotation_matrix[j] = msg->estimate[j + 9*i];
+				}
+				
+				// Validate rotation matrix before updating
+				if(rotation_matrix.norm() < 1e-6) {
+					RCLCPP_WARN(this->get_logger(), "Received zero rotation matrix for symbol %c%lu", 
+						symbol.chr(), symbol.index());
+					continue;
+				}
+
+				RCLCPP_DEBUG(this->get_logger(), 
+					"Updating rotation for symbol %c%lu with matrix norm: %.6f",
+					symbol.chr(), symbol.index(), rotation_matrix.norm());
+					
+				optimizer->updateNeighborLinearizedRotations(symbol.key(), rotation_matrix);
+			} else {
+				RCLCPP_WARN(this->get_logger(), 
+					"Key %c%lu not found in optimization set - skipping key", 
+					symbol.chr(), symbol.index());
+				if(other_robot_keys_for_optimization.find(symbol.key()) != other_robot_keys_for_optimization.end()) {
+					other_robot_keys_for_optimization.erase(symbol.key());
+				}
+				continue;
+			}
+		}
+
+		// Update initialization flags
+		if(optimizer_state == OptimizerState::RotationEstimation) {
+			optimizer->updateNeighboringRobotInitialized(char(id + 'a'), msg->initialized);
+			neighbors_rotation_estimate_finished[id] = msg->estimation_done;
+		}
+
+		// Check if we have all required neighbors
+		if(optimizer->getNeighboringRobotsInit().size() != optimization_order.size() - 1) {
+			return;
+		}
+
+		// Perform rotation estimation if not done
+		if(!estimation_done) {
+			try {
+				optimizer->estimateRotation();
+				
+				// Validate the estimation result
+				double change = optimizer->latestChange();
+				if(std::isnan(change) || std::isinf(change)) {
+					throw std::runtime_error("Invalid rotation estimation result");
+				}
+				
+				optimizer->updateRotation();
+				optimizer->updateInitialized(true);
+				current_rotation_estimate_iteration++;
+
+				RCLCPP_INFO(this->get_logger(),
+					"Rotation estimation<%d> iter:[%d/%d] change:%.4f",
+					robot_id, current_rotation_estimate_iteration, 
+					optimization_maximum_iteration_, change);
+
+				// Check convergence
+				if(change <= rotation_estimate_change_threshold_ || 
+				current_rotation_estimate_iteration >= optimization_maximum_iteration_) {
+					rotation_estimate_finished = true;
+					estimation_done = true;
+				}
+			} catch(const std::exception& ex) {
+				RCLCPP_ERROR(this->get_logger(), 
+					"Stopping rotation optimization %d: %s", robot_id, ex.what());
 				abortOptimization(true);
+				return;
 			}
-
-			// if change is small enough, end roation optimization
-			if((optimizer->latestChange() <= rotation_estimate_change_threshold_) || (current_rotation_estimate_iteration >= optimization_maximum_iteration_)){
-				rotation_estimate_finished = true;	// Mark rotation estimation as complete
-				estimation_done = true;				// Indicate that the estimation is done
-			}
-			RCLCPP_INFO(this->get_logger(), "Rotation estimation %d iter: [%d/%d] change:%.4f", robot_id, current_rotation_estimate_iteration, optimization_maximum_iteration_, optimizer->latestChange());
 		}
-
 		// check neigbors rotation optimization state
 		bool send_flag = estimation_done;
 		for(int i = 0; i < optimization_order.size(); i++)
@@ -251,7 +219,6 @@ void distributedMapping::neighborRotationHandler(
 		state_msg.data = estimation_done? 1:0;
 		robots[robot_id].pub_rotation_estimate_state->publish(state_msg);
 	}
-}
 
 /**
  * @brief Handles incoming pose estimates from neighboring robots and updates the local pose estimation process.
