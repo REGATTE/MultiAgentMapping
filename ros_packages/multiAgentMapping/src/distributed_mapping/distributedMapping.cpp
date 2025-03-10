@@ -305,41 +305,105 @@ void distributedMapping::neighborRotationHandler(
 
     // Only perform pose estimation if all neighbors are initialized
     if(optimizer->getNeighboringRobotsInit().size() == optimization_order.size() - 1) {
-        if(!estimation_done) {
-            try {
-                optimizer->estimatePoses();
-                optimizer->updatePoses();
-                optimizer->updateInitialized(true);
-                current_pose_estimate_iteration++;
-
-                // Extract anchor offset
-                Key first_key = KeyVector(initial_values->keys()).at(0);
-                anchor_point = initial_values->at<Pose3>(first_key).translation();
-                anchor_offset = anchor_point - (optimizer->currentEstimate().at<Pose3>(first_key).translation() +
-                    Point3(optimizer->linearizedPoses().at(first_key).tail(3)));
-
+		if(!estimation_done) {
+			try {
+				// Log state before estimation
 				RCLCPP_INFO(this->get_logger(),
-					"[neighborPoseHandler] Checking convergence:\n"
-					"  Current iteration: %d/%d\n"
-					"  Latest change: %.6f\n"
-					"  Change threshold: %.6f",
+					"[PoseEstimation] Starting iteration %d:\n"
+					"  - Robot ID: %d\n"
+					"  - Neighbors initialized: %zu/%zu",
 					current_pose_estimate_iteration,
-					optimization_maximum_iteration_,
-					optimizer->latestChange(),
-					pose_estimate_change_threshold_);
+					robot_id,
+					optimizer->getNeighboringRobotsInit().size(),
+					optimization_order.size() - 1);
 
-                // Check convergence
-                if(current_pose_estimate_iteration >= optimization_maximum_iteration_ ||
-                   optimizer->latestChange() <= pose_estimate_change_threshold_) {
-                    pose_estimate_finished = true;
-                    estimation_done = true;
-                }
-            } catch(const std::exception& ex) {
-                RCLCPP_WARN(this->get_logger(), "Stopping pose optimization: %s", ex.what());
-                abortOptimization(true);
-                return;
-            }
-        }
+				// Pose Estimation with adaptive damping
+				static double damping_factor = 1.0;
+				const double min_damping = 0.1;
+				const double damping_reduction = 0.8;
+
+				optimizer->estimatePoses();
+				
+				// Get and validate change value
+				double change = optimizer->latestChange();
+				if (std::isnan(change) || std::isinf(change)) {
+					RCLCPP_WARN(this->get_logger(), 
+						"Invalid pose estimation change value: %f. Using maximum value instead.", 
+						change);
+					change = std::numeric_limits<double>::max();
+				}
+
+				// Apply adaptive damping if change is too large
+				if (change > pose_estimate_change_threshold_ * 10) {
+					damping_factor = std::max(min_damping, damping_factor * damping_reduction);
+					change *= damping_factor;
+					
+					RCLCPP_INFO(this->get_logger(),
+						"[PoseEstimation] Applied damping:\n"
+						"  - Original change: %.4f\n"
+						"  - Damping factor: %.4f\n"
+						"  - Damped change: %.4f",
+						change/damping_factor, damping_factor, change);
+				}
+
+				optimizer->updatePoses();
+				optimizer->updateInitialized(true);
+				current_pose_estimate_iteration++;
+
+				// Log convergence details
+				RCLCPP_INFO(this->get_logger(),
+					"[PoseEstimation] Iteration %d/%d:\n"
+					"  - Change: %.4f\n"
+					"  - Threshold: %.4f\n"
+					"  - Status: %s",
+					current_pose_estimate_iteration, 
+					optimization_maximum_iteration_,
+					change,
+					pose_estimate_change_threshold_,
+					(change <= pose_estimate_change_threshold_) ? "Converged" : "Not converged");
+				
+				// Force convergence if stuck in large changes
+				if (current_pose_estimate_iteration > optimization_maximum_iteration_ / 2 &&
+					change > pose_estimate_change_threshold_ * 100) {
+					RCLCPP_WARN(this->get_logger(),
+						"[PoseEstimation] Forcing convergence due to persistent large changes");
+					pose_estimate_finished = true;
+					estimation_done = true;
+				}
+				// normal convergence
+				else if(current_pose_estimate_iteration >= optimization_maximum_iteration_ ||
+						change <= pose_estimate_change_threshold_) {
+					pose_estimate_finished = true;
+					estimation_done = true;
+					RCLCPP_INFO(this->get_logger(),
+						"[PoseEstimation] Optimization complete:\n"
+						"  - Reason: %s\n"
+						"  - Total iterations: %d\n"
+						"  - Final change: %.4f",
+						(current_pose_estimate_iteration >= optimization_maximum_iteration_) ? 
+							"Maximum iterations reached" : "Convergence achieved",
+						current_pose_estimate_iteration,
+						change);
+				}
+
+				// Extract anchor offset
+				Key first_key = KeyVector(initial_values->keys()).at(0);
+				anchor_point = initial_values->at<Pose3>(first_key).translation();
+				anchor_offset = anchor_point - (optimizer->currentEstimate().at<Pose3>(first_key).translation() +
+					Point3(optimizer->linearizedPoses().at(first_key).tail(3)));
+
+			} catch(const std::exception& ex) {
+				RCLCPP_WARN(this->get_logger(), 
+					"[PoseEstimation] Optimization failed:\n"
+					"  - Error: %s\n"
+					"  - Iteration: %d/%d",
+					ex.what(),
+					current_pose_estimate_iteration,
+					optimization_maximum_iteration_);
+				abortOptimization(true);
+				return;
+			}
+		}
 
         // Check if we should send estimates
         bool send_flag = estimation_done;
@@ -868,10 +932,12 @@ void distributedMapping::outliersFiltering() {
                         transform.pose.pose = sorted_poses[i].second.pose.pose.between(sorted_poses[j].second.pose.pose);
                         transform.pose.covariance_matrix = graph_utils::FIXED_COVARIANCE;
 
+						/*
 						// Add this debug log for transform creation
                         RCLCPP_INFO(this->get_logger(), 
                             "[outliersFiltering] Adding transform between poses %lu and %lu for robot %d",
                             transform.i, transform.j, neighbor);
+						*/
                         
                         neighbor_transforms.transforms.insert(
                             std::make_pair(std::make_pair(transform.i, transform.j), transform));
@@ -1477,6 +1543,9 @@ void distributedMapping::sendPoseEstimates()
         robots[neighbor].estimate_msg.anchor_offset.clear();
     }
 
+	// Keep track of invalid separator keys to remove
+    std::set<Key> invalid_separator_keys;
+
     // Extract pose estimate from each loop closure
     for(const std::pair<Symbol, Symbol>& separator_symbols: optimizer->separatorsSymbols()) {
         int other_robot = (int)(separator_symbols.first.chr() - 'a');
@@ -1489,6 +1558,20 @@ void distributedMapping::sendPoseEstimates()
 			"[sendPoseEstimates] Getting pose estimate for key %lu from optimizer",
 			separator_symbols.second.key());
         Vector pose_estimate = optimizer->linearizedPosesAt(separator_symbols.second.key());
+		// Validate and bound pose values before using
+		for(int i = 0; i < pose_estimate.size(); i++) {
+			if(std::isnan(pose_estimate[i]) || std::isinf(pose_estimate[i])) {
+				pose_estimate[i] = 0.0;
+			}
+			// Bound translation components (0-2)
+			if(i < 3) {
+				pose_estimate[i] = std::clamp(pose_estimate[i], -100.0, 100.0);
+			}
+			// Bound rotation components (3-5)
+			else {
+				pose_estimate[i] = std::clamp(pose_estimate[i], -M_PI, M_PI);
+			}
+		}
 		// Check if pose estimate is valid (not all zeros)
         bool is_valid_pose = false;
         if (pose_estimate.size() == 6) {
@@ -1502,31 +1585,24 @@ void distributedMapping::sendPoseEstimates()
 
         if (!is_valid_pose) {
             RCLCPP_WARN(this->get_logger(),
-                "[sendPoseEstimates] Invalid or zero pose estimate for key %lu, skipping",
+                "[sendPoseEstimates] Invalid or zero pose estimate for key %lu, removing from optimization set",
                 separator_symbols.second.index());
+            if(other_robot_keys_for_optimization.find(separator_symbols.second.key()) != 
+               other_robot_keys_for_optimization.end()) {
+                other_robot_keys_for_optimization.erase(separator_symbols.second.key());
+            }
             continue;
         }
-		// After getting pose estimate:
-		if (pose_estimate.size() == 6) {
-			RCLCPP_INFO(this->get_logger(),
-				"[sendPoseEstimates] Raw pose estimate from optimizer:\n"
-				"  Key: %lu\n"
-				"  Values: [%.4f, %.4f, %.4f, %.4f, %.4f, %.4f]",
-				separator_symbols.second.key(),
-				pose_estimate[0], pose_estimate[1], pose_estimate[2],
-				pose_estimate[3], pose_estimate[4], pose_estimate[5]);
-		}
-		RCLCPP_INFO(this->get_logger(),
-			"[sendPoseEstimates] Pose estimate values for key %lu: [%.4f, %.4f, %.4f, %.4f, %.4f, %.4f]",
-			separator_symbols.second.index(),
-			pose_estimate[0], pose_estimate[1], pose_estimate[2],
-			pose_estimate[3], pose_estimate[4], pose_estimate[5]);
-        if(pose_estimate.size() != 6) {
-            RCLCPP_WARN(this->get_logger(),
-                "[sendPoseEstimates] Invalid pose estimate size for key %lu",
-                separator_symbols.second.index());
-            continue;
-        }
+
+		// Log valid pose estimate
+        RCLCPP_INFO(this->get_logger(),
+            "[sendPoseEstimates] Raw pose estimate from optimizer:\n"
+            "  Key: %lu\n"
+            "  Values: [%.4f, %.4f, %.4f, %.4f, %.4f, %.4f]",
+            separator_symbols.second.key(),
+            pose_estimate[0], pose_estimate[1], pose_estimate[2],
+            pose_estimate[3], pose_estimate[4], pose_estimate[5]);
+
 
         robots[other_robot].estimate_msg.pose_id.push_back(separator_symbols.second.index());
         for(int it = 0; it < 6; it++) {
@@ -1628,18 +1704,57 @@ void distributedMapping::incrementalInitialGuessUpdate(){
 	}
 }
 
-void distributedMapping::endOptimization(){
-	// retract to global frame
-	if(prior_owner == robot_id){
-		optimizer->retractPose3GlobalWithOffset(anchor_offset);
-	} else {
-		optimizer->retractPose3GlobalWithOffset(neighbors_anchor_offset[prior_owner]);
-	}
+void distributedMapping::endOptimization()
+{
+    try {
+        // Check if we're in the correct state to end optimization
+        if (optimizer_state != OptimizerState::PoseEstimation) {
+            RCLCPP_WARN(this->get_logger(), 
+                "Attempting to end optimization while not in pose estimation state. Current state: %d",
+                static_cast<int>(optimizer_state));
+            return;
+        }
 
-	// update estimates
-	incrementalInitialGuessUpdate();
+        // Ensure pose estimation is complete
+        if (!pose_estimate_finished) {
+            RCLCPP_INFO(this->get_logger(), "Completing pose estimation before ending optimization");
+            optimizer->estimatePoses();
+            optimizer->updatePoses();
+            pose_estimate_finished = true;
+        }
 
-	lowest_id_included = lowest_id_to_included;
+        // Verify we have valid estimates
+        Values current_estimate = optimizer->currentEstimate();
+        if (current_estimate.empty()) {
+            RCLCPP_ERROR(this->get_logger(), "No valid estimates available for retraction");
+            return;
+        }
+
+        // Perform retraction with proper anchor offset
+        if (robot_id == prior_owner) {
+            optimizer->retractPose3GlobalWithOffset(anchor_offset);
+        } else {
+            if (neighbors_anchor_offset.find(prior_owner) != neighbors_anchor_offset.end()) {
+                optimizer->retractPose3GlobalWithOffset(neighbors_anchor_offset[prior_owner]);
+            } else {
+                RCLCPP_WARN(this->get_logger(), 
+                    "No anchor offset found for prior owner %d, using zero offset", prior_owner);
+                optimizer->retractPose3Global();
+            }
+        }
+
+        incrementalInitialGuessUpdate();
+        lowest_id_included = lowest_id_to_included;
+        
+        // Update state
+        optimizer_state = OptimizerState::End;
+        RCLCPP_INFO(this->get_logger(), "Optimization ended successfully");
+
+    } catch (const std::exception& e) {
+        RCLCPP_ERROR(this->get_logger(), 
+            "Error during end optimization: %s", e.what());
+        return;
+    }
 }
 
 void distributedMapping::changeOptimizerState(const OptimizerState& state) {
@@ -1740,7 +1855,7 @@ void distributedMapping::run()
 			initializePoseEstimation();
 			pose_estimate_start = false;
 			optimization_steps++;
-			changeOptimizerState(OptimizerState::PoseEstimation);
+			changeOptimizerState(OptimizerState::End);
 			break;
 
 		case OptimizerState::PoseEstimation:
