@@ -46,6 +46,8 @@ public:
 	
 	virtual int getSize(
 		const int id = -1) = 0;
+protected:
+	std::mutex iris_mutex;
 };
 
 #endif

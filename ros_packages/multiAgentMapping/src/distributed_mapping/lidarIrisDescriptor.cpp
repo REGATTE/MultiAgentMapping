@@ -92,6 +92,8 @@ int lidar_iris_descriptor::findClosestElevationLayer(float elevation, const std:
 std::pair<Eigen::VectorXf, cv::Mat1b> lidar_iris_descriptor::getIris(
     const pcl::PointCloud<pcl::PointXYZI>& cloud
 ) {
+    std::lock_guard<std::mutex> lock(iris_mutex);  // Lock during matrix operations
+    
     cv::Mat1f intensity_accumulator = cv::Mat1f::zeros(rows_, columns_);
     cv::Mat1i count_accumulator = cv::Mat1i::zeros(rows_, columns_);
     cv::Mat1b iris_image = cv::Mat1b::zeros(rows_, columns_);
