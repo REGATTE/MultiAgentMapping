@@ -174,6 +174,8 @@ class distributedMapping : public paramsServer{
 		void publishGlobalMap();
 
 		void publishLoopClosureConstraint();
+
+		void sendPoseEstimates();
     
     public:
         mutex lock_on_call;
