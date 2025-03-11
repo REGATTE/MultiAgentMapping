@@ -8,10 +8,14 @@ Panels:
         - /links1/TF1/Frames1
         - /scout_1_11
         - /scout_1_11/Global Path1/Status1
+        - /scout_1_11/Odometry1
+        - /scout_1_11/Odometry1/Topic1
         - /scout_1_11/Odometry Path1/Shape1
         - /scout_1_11/Odometry Path1/Covariance1
         - /scout_1_11/LoopClosure Constraints1/Topic1
         - /scout_2_21
+        - /scout_2_21/Odometry1
+        - /scout_2_21/Odometry1/Topic1
         - /scout_2_21/LoopClosure Constraints1
       Splitter Ratio: 0.5
     Tree Height: 1079
@@ -275,8 +279,8 @@ Visualization Manager:
             Durability Policy: Volatile
             Filter size: 10
             History Policy: Keep Last
-            Reliability Policy: Reliable
-            Value: /scout_1_1/lio_sam/mapping/odometry
+            Reliability Policy: Best Effort
+            Value: /a/lio_sam/mapping/odometry
           Value: true
         - Angle Tolerance: 0.10000000149011612
           Class: rviz_default_plugins/Odometry
@@ -568,8 +572,8 @@ Visualization Manager:
             Durability Policy: Volatile
             Filter size: 10
             History Policy: Keep Last
-            Reliability Policy: Reliable
-            Value: /scout_2_2/lio_sam/mapping/odometry
+            Reliability Policy: Best Effort
+            Value: /b/lio_sam/mapping/odometry
           Value: true
         - Angle Tolerance: 0.10000000149011612
           Class: rviz_default_plugins/Odometry
@@ -747,5 +751,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1685
-  X: 70
-  Y: 27
+  X: 1755
+  Y: 224

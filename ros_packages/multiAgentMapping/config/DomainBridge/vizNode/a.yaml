@@ -27,3 +27,20 @@ topics:
       lifespan: 0
       liveliness: automatic
       liveliness_lease_duration: 0
+  /tf:
+    type: tf2_msgs/msg/TFMessage
+    qos:
+      reliability: reliable
+      durability: volatile
+      history: keep_last
+      depth: 10
+    transform_rules:
+      - frame_id: world
+        child_frame_id: a/odom 
+        action: pass
+      - frame_id: a/odom
+        child_frame_id: a/lidar_link
+        action: pass
+      - frame_id: .*
+        child_frame_id: .*
+        action: block
