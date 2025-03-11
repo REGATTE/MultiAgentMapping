@@ -1727,13 +1727,17 @@ void distributedMapping::endOptimization()
         // Ensure pose estimation is complete if we're coming from PoseEstimation state
         if (optimizer_state == OptimizerState::PoseEstimation && !pose_estimate_finished) {
             RCLCPP_INFO(this->get_logger(), "Completing pose estimation before ending optimization");
-            optimizer->estimatePoses();
-            optimizer->updatePoses();
-            pose_estimate_finished = true;
+            try {
+                optimizer->estimatePoses();
+                optimizer->updatePoses();
+                pose_estimate_finished = true;
+            } catch (const std::exception& e) {
+                RCLCPP_WARN(this->get_logger(), "Error during pose estimation completion: %s", e.what());
+            }
         }
 
+        // Perform retraction with proper anchor offset
         try {
-            // Perform retraction with proper anchor offset
             if (robot_id == prior_owner) {
                 optimizer->retractPose3GlobalWithOffset(anchor_offset);
             } else {
@@ -1745,12 +1749,16 @@ void distributedMapping::endOptimization()
                     optimizer->retractPose3Global();
                 }
             }
+        } catch (const std::exception& e) {
+            RCLCPP_WARN(this->get_logger(), "Error during pose retraction: %s", e.what());
+        }
 
+        // Update initial guess
+        try {
             incrementalInitialGuessUpdate();
             lowest_id_included = lowest_id_to_included;
         } catch (const std::exception& e) {
-            RCLCPP_WARN(this->get_logger(), 
-                "Non-critical error during pose updates: %s", e.what());
+            RCLCPP_WARN(this->get_logger(), "Error during initial guess update: %s", e.what());
         }
         
         // Update state
@@ -1759,7 +1767,7 @@ void distributedMapping::endOptimization()
 
     } catch (const std::exception& e) {
         RCLCPP_ERROR(this->get_logger(), 
-            "Error during end optimization: %s", e.what());
+            "Critical error during end optimization: %s", e.what());
         return;
     }
 }
