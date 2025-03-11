@@ -15,7 +15,7 @@ gnome-terminal -- bash -c "
 # Launch the distributed mapping node in another new terminal
 echo "Launching distributed mapping with the specified parameters for Scout_1_1 in a new terminal..."
 gnome-terminal -- bash -c "
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_1_1.yaml  namespace:=/a;  
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_1_1.yaml  namespace:=/a rviz_config:=scout_1_1.rviz;
     exec bash
 "
 
@@ -36,7 +36,7 @@ gnome-terminal -- bash -c "
 # Launch the distributed mapping node in another new terminal
 echo "Launching distributed mapping with the specified parameters for Scout_2_2 in a new terminal..."
 gnome-terminal -- bash -c "
-    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_2_2.yaml  namespace:=/b;  
+    ros2 launch multi_agent_mapping run_params.launch.py params:=params_scout_2_2.yaml  namespace:=/b rviz_config:=scout_2_2.rviz;  
     exec bash
 "
 
@@ -49,13 +49,13 @@ gnome-terminal -- bash -c "
 ## Distributed
 echo "Launching RVIZ"
 gnome-terminal -- bash -c "
-    ros2 run rviz2 rviz2 -d /home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/rviz/dist_mapping.rviz;
+    ros2 run rviz2 rviz2 -d /home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/rviz/pathViz.rviz;
     exec bash
 "
 
 echo "LoopVisualizationNode"
 gnome-terminal -- bash -c "
-    ros2 run multi_agent_mapping multi_agent_mapping_loopVisualizationNode;
+    ros2 run multi_agent_mapping multi_agent_mapping_pathVisualizationNode;
     exec bash
 "
 
