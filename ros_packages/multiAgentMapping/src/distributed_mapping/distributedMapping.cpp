@@ -1707,44 +1707,51 @@ void distributedMapping::incrementalInitialGuessUpdate(){
 void distributedMapping::endOptimization()
 {
     try {
-        // Check if we're in the correct state to end optimization
-        if (optimizer_state != OptimizerState::PoseEstimation) {
+        // Check valid states for ending optimization
+        if (optimizer_state != OptimizerState::PoseEstimation && 
+            optimizer_state != OptimizerState::End && 
+            optimizer_state != OptimizerState::PoseEstimationInitialization) {
             RCLCPP_WARN(this->get_logger(), 
-                "Attempting to end optimization while not in pose estimation state. Current state: %d",
+                "Attempting to end optimization in incorrect state: %d",
                 static_cast<int>(optimizer_state));
             return;
         }
 
-        // Ensure pose estimation is complete
-        if (!pose_estimate_finished) {
-            RCLCPP_INFO(this->get_logger(), "Completing pose estimation before ending optimization");
-            optimizer->estimatePoses();
-            optimizer->updatePoses();
-            pose_estimate_finished = true;
-        }
-
-        // Verify we have valid estimates
+        // Verify we have valid estimates before any operations
         Values current_estimate = optimizer->currentEstimate();
         if (current_estimate.empty()) {
             RCLCPP_ERROR(this->get_logger(), "No valid estimates available for retraction");
             return;
         }
 
-        // Perform retraction with proper anchor offset
-        if (robot_id == prior_owner) {
-            optimizer->retractPose3GlobalWithOffset(anchor_offset);
-        } else {
-            if (neighbors_anchor_offset.find(prior_owner) != neighbors_anchor_offset.end()) {
-                optimizer->retractPose3GlobalWithOffset(neighbors_anchor_offset[prior_owner]);
-            } else {
-                RCLCPP_WARN(this->get_logger(), 
-                    "No anchor offset found for prior owner %d, using zero offset", prior_owner);
-                optimizer->retractPose3Global();
-            }
+        // Ensure pose estimation is complete if we're coming from PoseEstimation state
+        if (optimizer_state == OptimizerState::PoseEstimation && !pose_estimate_finished) {
+            RCLCPP_INFO(this->get_logger(), "Completing pose estimation before ending optimization");
+            optimizer->estimatePoses();
+            optimizer->updatePoses();
+            pose_estimate_finished = true;
         }
 
-        incrementalInitialGuessUpdate();
-        lowest_id_included = lowest_id_to_included;
+        try {
+            // Perform retraction with proper anchor offset
+            if (robot_id == prior_owner) {
+                optimizer->retractPose3GlobalWithOffset(anchor_offset);
+            } else {
+                if (neighbors_anchor_offset.find(prior_owner) != neighbors_anchor_offset.end()) {
+                    optimizer->retractPose3GlobalWithOffset(neighbors_anchor_offset[prior_owner]);
+                } else {
+                    RCLCPP_WARN(this->get_logger(), 
+                        "No anchor offset found for prior owner %d, using zero offset", prior_owner);
+                    optimizer->retractPose3Global();
+                }
+            }
+
+            incrementalInitialGuessUpdate();
+            lowest_id_included = lowest_id_to_included;
+        } catch (const std::exception& e) {
+            RCLCPP_WARN(this->get_logger(), 
+                "Non-critical error during pose updates: %s", e.what());
+        }
         
         // Update state
         optimizer_state = OptimizerState::End;
