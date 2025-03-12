@@ -49,13 +49,13 @@ gnome-terminal -- bash -c "
 ## Distributed
 echo "Launching RVIZ"
 gnome-terminal -- bash -c "
-    ros2 run rviz2 rviz2 -d /home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/rviz/pathViz.rviz;
+    ros2 run rviz2 rviz2 -d /home/regastation/workspaces/masters_ws/src/MultiAgentMapping/ros_packages/multiAgentMapping/config/rviz/globalViz_2.rviz;
     exec bash
 "
 
 echo "LoopVisualizationNode"
 gnome-terminal -- bash -c "
-    ros2 run multi_agent_mapping multi_agent_mapping_pathVisualizationNode;
+    ros2 run multi_agent_mapping multi_agent_mapping_loopVisualizationNode;
     exec bash
 "
 

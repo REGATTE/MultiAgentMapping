@@ -123,11 +123,6 @@ add_executable(${PROJECT_NAME}_loopVisualizationNode src/distributed_mapping/loo
 ament_target_dependencies(${PROJECT_NAME}_loopVisualizationNode rclcpp sensor_msgs visualization_msgs pcl_conversions pcl_msgs PCL GTSAM)
 target_link_libraries(${PROJECT_NAME}_loopVisualizationNode gtsam "${cpp_typesupport_target}")
 
-# build path visualization node
-add_executable(${PROJECT_NAME}_pathVisualizationNode src/distributed_mapping/pathVisualizationNode.cpp)
-ament_target_dependencies(${PROJECT_NAME}_pathVisualizationNode rclcpp sensor_msgs nav_msgs visualization_msgs pcl_conversions tf2_ros pcl_msgs PCL GTSAM)
-target_link_libraries(${PROJECT_NAME}_pathVisualizationNode gtsam "${cpp_typesupport_target}")
-
 install(
   DIRECTORY launch
   DESTINATION share/${PROJECT_NAME}/
@@ -146,7 +141,6 @@ install(
     ${PROJECT_NAME}_imuPreintegration
     ${PROJECT_NAME}_mapOptimization
     ${PROJECT_NAME}_loopVisualizationNode
-    ${PROJECT_NAME}_pathVisualizationNode
   DESTINATION lib/${PROJECT_NAME}
 )
 

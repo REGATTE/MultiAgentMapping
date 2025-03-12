@@ -61,7 +61,7 @@ public:
 private:
     void loopClosureThread()
     {
-        rclcpp::Rate rate(0.1);
+        rclcpp::Rate rate(1);
         while (rclcpp::ok())
         {
             rate.sleep();
