@@ -97,27 +97,59 @@ private:
                         msg->pose1.translation.y,
                         msg->pose1.translation.z));
 
-                if (!initial_transforms_set_[msg->robot1]) {
-                    initial_transforms_set_[msg->robot1] = true;
+                // Get current pose of both robots
+                gtsam::Point3 current_pose0 = getCurrentRobotPose(0);  // Reference robot
+                gtsam::Point3 current_pose1 = getCurrentRobotPose(msg->robot1);  // Other robot
+
+                // Calculate distances
+                double loop_closure_distance = (pose0.translation() - pose1.translation()).norm();
+                double robot0_distance = (current_pose0 - pose0.translation()).norm();
+                double robot1_distance = (current_pose1 - pose1.translation()).norm();
+
+                const double MIN_LOOP_CLOSURE_DISTANCE = 2.0;  // Distance between poses at loop closure
+                const double MAX_CURRENT_POSE_DISTANCE = 5.0;  // Max distance from current pose to loop closure point
+
+                // Only process loop closure if:
+                // 1. The poses at loop closure point are close enough
+                // 2. Both robots are currently near their respective loop closure points
+                if (loop_closure_distance < MIN_LOOP_CLOSURE_DISTANCE && 
+                    robot0_distance < MAX_CURRENT_POSE_DISTANCE &&
+                    robot1_distance < MAX_CURRENT_POSE_DISTANCE) {
                     
-                    // Store the intersection point (loop closure point)
-                    transform_point_[msg->robot1] = gtsam::Point3(
-                        msg->pose1.translation.x,
-                        msg->pose1.translation.y,
-                        msg->pose1.translation.z
-                    );
+                    if (!initial_transforms_set_[msg->robot1]) {
+                        initial_transforms_set_[msg->robot1] = true;
+                        
+                        // Store the intersection point (loop closure point)
+                        transform_point_[msg->robot1] = gtsam::Point3(
+                            msg->pose1.translation.x,
+                            msg->pose1.translation.y,
+                            msg->pose1.translation.z
+                        );
 
-                    // Store the original directions at loop closure
-                    original_directions_[msg->robot1] = robot_directions_[msg->robot1];
-                    initial_orientations_[msg->robot1] = pose1.rotation();
+                        // Store the original directions at loop closure
+                        original_directions_[msg->robot1] = robot_directions_[msg->robot1];
+                        initial_orientations_[msg->robot1] = pose1.rotation();
+                    }
+
+                    // Calculate relative transform between poses at loop closure point
+                    gtsam::Pose3 relative_transform = pose0.between(pose1);
+                    relative_transforms_[msg->robot1] = relative_transform;
+                    transform_history_[msg->robot1].push_back(relative_transform);
                 }
-
-                // Calculate relative transform between poses at loop closure point
-                gtsam::Pose3 relative_transform = pose0.between(pose1);
-                relative_transforms_[msg->robot1] = relative_transform;
-                transform_history_[msg->robot1].push_back(relative_transform);
             }
         }
+    }
+    gtsam::Point3 getCurrentRobotPose(int robot_id) {
+        if (robot_paths_[robot_id].poses.empty()) {
+            return gtsam::Point3(0, 0, 0);
+        }
+        
+        const auto& latest_pose = robot_paths_[robot_id].poses.back().pose;
+        return gtsam::Point3(
+            latest_pose.position.x,
+            latest_pose.position.y,
+            latest_pose.position.z
+        );
     }
 
     void visualizationCallback() {
