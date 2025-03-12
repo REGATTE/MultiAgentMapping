@@ -83,6 +83,29 @@ void distributedMapping::neighborRotationHandler(
 			return;
 		}
 
+		// Check if we have enough constraints
+		if (optimizer->currentGraph().size() < optimizer->currentEstimate().size()) {
+			RCLCPP_WARN(this->get_logger(), 
+				"Not enough constraints for rotation estimation. Factors: %lu, Variables: %lu",
+				optimizer->currentGraph().size(), 
+				optimizer->currentEstimate().size());
+			return;
+		}
+
+		// Verify prior exists
+		bool hasPrior = false;
+		for (const auto& factor : optimizer->currentGraph()) {
+			if (boost::dynamic_pointer_cast<gtsam::PriorFactor<gtsam::Pose3>>(factor)) {
+				hasPrior = true;
+				break;
+			}
+		}
+
+		if (!hasPrior) {
+			RCLCPP_ERROR(this->get_logger(), "No prior factor found in graph");
+			return;
+		}
+
 		// Update neighbor rotation estimates
 		for(int i = 0; i < msg->pose_id.size(); i++) {
 			Symbol symbol((id + 'a'), msg->pose_id[i]);
@@ -154,6 +177,11 @@ void distributedMapping::neighborRotationHandler(
 				if(std::isnan(change) || std::isinf(change)) {
 					throw std::runtime_error("Invalid rotation estimation result");
 				}
+
+				// Check if the result is numerically stable
+				if (change > 1e6) {
+					throw std::runtime_error("Rotation estimation result is numerically unstable");
+				}
 				
 				optimizer->updateRotation();
 				optimizer->updateInitialized(true);
@@ -170,9 +198,15 @@ void distributedMapping::neighborRotationHandler(
 					rotation_estimate_finished = true;
 					estimation_done = true;
 				}
+			} catch(const gtsam::IndeterminantLinearSystemException& e) {
+				RCLCPP_ERROR(this->get_logger(), 
+					"Rotation estimation failed due to underconstrained system: %s", 
+					e.what());
+				abortOptimization(true);
+				return;
 			} catch(const std::exception& ex) {
 				RCLCPP_ERROR(this->get_logger(), 
-					"Stopping rotation optimization %d: %s", robot_id, ex.what());
+					"Rotation estimation failed: %s", ex.what());
 				abortOptimization(true);
 				return;
 			}

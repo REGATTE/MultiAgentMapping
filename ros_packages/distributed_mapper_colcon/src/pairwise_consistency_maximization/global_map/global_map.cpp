@@ -48,32 +48,18 @@ namespace global_map {
 
         // Compute maximum clique
         FMC::CGraphIO gio;
-        try {
-            std::cout << "[GlobalMap] Reading graph from file..." << std::endl;
-            gio.readGraph(consistency_matrix_file);
-            
-            std::cout << "[GlobalMap] Graph size: " << consistency_matrix.rows() << " vertices" << std::endl;
-            
-            int max_clique_size = 0;
-            std::vector<int> max_clique_data;
-            
-            if (consistency_matrix.rows() <= 0) {
-                std::cerr << "[GlobalMap] Invalid matrix size: " << consistency_matrix.rows() << std::endl;
-                throw std::runtime_error("Invalid graph size");
-            }
-            
-            max_clique_data.reserve(consistency_matrix.rows());  // Reserve with known size
-            
-            std::cout << "[GlobalMap] Computing maximum clique..." << std::endl;
-            max_clique_size = FMC::maxCliqueHeu(gio, max_clique_data);
-            
-            std::cout << "[GlobalMap] Max clique size: " << max_clique_size << std::endl;
-            
-            return std::make_pair(max_clique_data, 
-                pairwise_consistency_.getLoopClosures().size() - max_clique_data.size());
-        } catch (const std::exception& e) {
-            std::cerr << "[GlobalMap] Failed in max clique computation: " << e.what() << std::endl;
-            throw;
-        }
+        gio.readGraph(consistency_matrix_file);
+        int max_clique_size = 0;
+        std::vector<int> max_clique_data;
+
+        //max_clique_size = FMC::maxClique(gio, max_clique_size, max_clique_data);
+        max_clique_size = FMC::maxCliqueHeu(gio, max_clique_data);
+
+        // Print results
+        std::string consistency_loop_closures_file = CONSISTENCY_LOOP_CLOSURES_FILE_NAME + "_" + robot_id + ".txt";
+        graph_utils::printConsistentLoopClosures(pairwise_consistency_.getLoopClosures(), max_clique_data, consistency_loop_closures_file);
+
+        int number_of_loop_closures_to_be_rejected = pairwise_consistency_.getLoopClosures().size() - max_clique_data.size();
+        return std::make_pair(max_clique_data, number_of_loop_closures_to_be_rejected);
     }
 }

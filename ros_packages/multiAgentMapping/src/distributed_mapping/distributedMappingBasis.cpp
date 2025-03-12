@@ -227,16 +227,13 @@ distributedMapping::distributedMapping(const rclcpp::NodeOptions & options)
     kdtree_history_keyposes.reset(new pcl::KdTreeFLANN<PointPose3D>());
 
     // noise model
-    odometry_noise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-6, 1e-6, 1e-6).finished());
+    odometry_noise = noiseModel::Diagonal::Variances((Vector(6) << 1e-6, 1e-6, 1e-6, 1e-4, 1e-4, 1e-4).finished());
 	prior_noise = noiseModel::Isotropic::Variance(6, 1e-12);
 
     // isam2 params init
     ISAM2Params isam2_parameters;
     isam2_parameters.relinearizeThreshold = 0.1;
     isam2_parameters.relinearizeSkip = 1;
-    isam2_parameters.factorization = ISAM2Params::CHOLESKY;
-    isam2_parameters.cacheLinearizedFactors = false;
-    isam2_parameters.enableDetailedResults = true;
     isam2 = new ISAM2(isam2_parameters);
 
     keyposes_cloud_3d.reset(new pcl::PointCloud<PointPose3D>());
@@ -301,13 +298,13 @@ distributedMapping::distributedMapping(const rclcpp::NodeOptions & options)
 	measurements_rejected_num = 0;
 	measurements_accepted_num = 0;
 	
-	optimizer->setUseBetweenNoiseFlag(use_between_noise_); // use between noise or not in optimizePoses
-	optimizer->setUseLandmarksFlag(use_landmarks_); // use landmarks
+	optimizer->setUseBetweenNoiseFlag(true); // use between noise or not in optimizePoses
+	optimizer->setUseLandmarksFlag(false); // use landmarks
 	optimizer->loadSubgraphAndCreateSubgraphEdge(graph_values_vec); // load subgraphs
 	optimizer->setVerbosity(distributed_mapper::DistributedMapper::ERROR); // verbosity level
-	optimizer->setFlaggedInit(use_flagged_init_);
+	optimizer->setFlaggedInit(true);
 	optimizer->setUpdateType(distributed_mapper::DistributedMapper::incUpdate);
-	optimizer->setGamma(gamma_);
+	optimizer->setGamma(1.0);
 
 	/*** Initialize Timer ***/
     if (global_optimization_enable_) {
