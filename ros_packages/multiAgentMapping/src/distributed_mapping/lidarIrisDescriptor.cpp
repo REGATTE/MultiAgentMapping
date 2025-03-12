@@ -94,136 +94,169 @@ std::pair<Eigen::VectorXf, cv::Mat1b> lidar_iris_descriptor::getIris(
 ) {
     std::lock_guard<std::mutex> lock(iris_mutex);  // Lock during matrix operations
     
-    cv::Mat1f intensity_accumulator = cv::Mat1f::zeros(rows_, columns_);
-    cv::Mat1i count_accumulator = cv::Mat1i::zeros(rows_, columns_);
     cv::Mat1b iris_image = cv::Mat1b::zeros(rows_, columns_);
     Eigen::MatrixXf iris_row_key_matrix = Eigen::MatrixXf::Zero(rows_, columns_);
     Eigen::VectorXi row_counts = Eigen::VectorXi::Zero(rows_);
+    float mean_intensity = 0.0f;
     
-    if (cloud.empty()) {
-        std::cerr << "[ERROR] Input LiDAR cloud is empty!" << std::endl;
-        return std::make_pair(Eigen::VectorXf::Zero(rows_), cv::Mat1b::zeros(rows_, columns_));
-    }
-
-    // First pass: collect statistics and accumulate intensities
-    float min_intensity = std::numeric_limits<float>::max();
-    float max_intensity = std::numeric_limits<float>::min();
-    float sum_intensity = 0;
-    std::vector<float> all_intensities;
-    all_intensities.reserve(cloud.size());
-
-    std::vector<float> elevation_layers = extractUniqueElevationAngles(cloud);
-
-    for (const auto& point : cloud) {
-        float azimuth = atan2(point.y, point.x) * 180.0 / M_PI;
-        float elevation = atan2(point.z, sqrt(point.x * point.x + point.y * point.y)) * 180.0 / M_PI;
-
-        int row = findClosestElevationLayer(elevation, elevation_layers);
-        int col = floor((azimuth + 180.0) / (360.0 / columns_));
-
-        if (row < 0 || row >= rows_ || col < 0 || col >= columns_) continue;
-
-        // Accumulate intensities and counts
-        intensity_accumulator.at<float>(row, col) += point.intensity;
-        count_accumulator.at<int>(row, col)++;
+    if(n_scan_ == 16){
+        for(auto p : cloud.points){
+            float dis = sqrt(p.data[0] * p.data[0] + p.data[1] * p.data[1]);
+			float arc = (atan2(p.data[2], dis) * 180.0f / M_PI) + 15; // [0, 30] deg.
+			float yaw = (atan2(p.data[1], p.data[0]) * 180.0f / M_PI) + 180;
+			int Q_dis = std::min(std::max((int)floor(dis), 0), (rows_-1));
+			int Q_arc = std::min(std::max((int)floor(arc / 4.0f), 0), 7);
+			// int Q_arc = std::min(std::max((int)ceil(p.data[2] + 5), 0), 7);
+			int Q_yaw = std::min(std::max((int)floor(yaw + 0.5), 0), (columns_-1));
+			iris_image.at<uint8_t>(Q_dis, Q_yaw) |= (1 << Q_arc);
+			if(iris_row_key_matrix(Q_dis, Q_yaw) < p.data[2])
+			{
+				iris_row_key_matrix(Q_dis, Q_yaw) = p.data[2];
+			}
+        }
+    } else if(n_scan_ == 64){
+        for(auto p : cloud.points){
+			float dis = sqrt(p.data[0] * p.data[0] + p.data[1] * p.data[1]);
+			// float arc = (atan2(p.data[2], dis) * 180.0f / M_PI) + 25; // [0, 26.9] deg.
+			float yaw = (atan2(p.data[1], p.data[0]) * 180.0f / M_PI) + 180;
+			int Q_dis = std::min(std::max((int)floor(dis), 0), (rows_-1));
+			// int Q_arc = std::min(std::max((int)floor(arc / 3.3), 0), 7);
+			int Q_arc = std::min(std::max((int)ceil(p.data[2] + 5), 0), 7);
+			int Q_yaw = std::min(std::max((int)floor(yaw + 0.5), 0), (columns_-1));
+			iris_image.at<uint8_t>(Q_dis, Q_yaw) |= (1 << Q_arc);
+			if(iris_row_key_matrix(Q_dis, Q_yaw) < p.data[2])
+			{
+				iris_row_key_matrix(Q_dis, Q_yaw) = p.data[2];
+			}
+		}
+    } else if(n_scan_ == 128){
+        cv::Mat1f intensity_accumulator = cv::Mat1f::zeros(rows_, columns_);
+        cv::Mat1i count_accumulator = cv::Mat1i::zeros(rows_, columns_);
         
-        // Update statistics
-        min_intensity = std::min(min_intensity, point.intensity);
-        max_intensity = std::max(max_intensity, point.intensity);
-        sum_intensity += point.intensity;
-        all_intensities.push_back(point.intensity);
+        if (cloud.empty()) {
+            std::cerr << "[ERROR] Input LiDAR cloud is empty!" << std::endl;
+            return std::make_pair(Eigen::VectorXf::Zero(rows_), cv::Mat1b::zeros(rows_, columns_));
+        }
 
-        // Update row key matrix
-        iris_row_key_matrix(row, col) += point.intensity;
-        row_counts(row)++;
-    }
+        // First pass: collect statistics and accumulate intensities
+        float min_intensity = std::numeric_limits<float>::max();
+        float max_intensity = std::numeric_limits<float>::min();
+        float sum_intensity = 0;
+        std::vector<float> all_intensities;
+        all_intensities.reserve(cloud.size());
 
-    // Calculate mean intensity
-    float mean_intensity = sum_intensity / cloud.size();
-    
-    // Calculate median intensity
-    std::sort(all_intensities.begin(), all_intensities.end());
-    float median_intensity = all_intensities[all_intensities.size()/2];
+        std::vector<float> elevation_layers = extractUniqueElevationAngles(cloud);
 
-    // Mode calculation
-    std::map<int, int> intensity_histogram;
-    for (const auto& intensity : all_intensities) {
-        intensity_histogram[static_cast<int>(intensity)]++;
-    }
-    int mode_intensity = std::max_element(
-        intensity_histogram.begin(), intensity_histogram.end(),
-        [](const auto& p1, const auto& p2) { return p1.second < p2.second; }
-    )->first;
+        for (const auto& point : cloud) {
+            float azimuth = atan2(point.y, point.x) * 180.0 / M_PI;
+            float elevation = atan2(point.z, sqrt(point.x * point.x + point.y * point.y)) * 180.0 / M_PI;
 
-    // Log intensity statistics
-    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), 
-        "Intensity Statistics - Mean: %.3f, Median: %.3f, Mode: %.3f, Min: %.3f, Max: %.3f",
-        mean_intensity, median_intensity, static_cast<float>(mode_intensity), min_intensity, max_intensity);
+            int row = findClosestElevationLayer(elevation, elevation_layers);
+            int col = floor((azimuth + 180.0) / (360.0 / columns_));
 
-    // Create iris image from accumulated intensities
-    for (int i = 0; i < rows_; i++) {
-        for (int j = 0; j < columns_; j++) {
-            if (count_accumulator.at<int>(i, j) > 0) {
-                float avg_intensity = intensity_accumulator.at<float>(i, j) / count_accumulator.at<int>(i, j);
-                // Normalize to 0-255 range
-                iris_image.at<uint8_t>(i, j) = static_cast<uint8_t>((avg_intensity - min_intensity) * 255.0 / (max_intensity - min_intensity));
+            if (row < 0 || row >= rows_ || col < 0 || col >= columns_) continue;
+
+            // Accumulate intensities and counts
+            intensity_accumulator.at<float>(row, col) += point.intensity;
+            count_accumulator.at<int>(row, col)++;
+            
+            // Update statistics
+            min_intensity = std::min(min_intensity, point.intensity);
+            max_intensity = std::max(max_intensity, point.intensity);
+            sum_intensity += point.intensity;
+            all_intensities.push_back(point.intensity);
+
+            // Update row key matrix
+            iris_row_key_matrix(row, col) += point.intensity;
+            row_counts(row)++;
+        }
+
+        // Calculate mean intensity
+        float mean_intensity = sum_intensity / cloud.size();
+        
+        // Calculate median intensity
+        std::sort(all_intensities.begin(), all_intensities.end());
+        float median_intensity = all_intensities[all_intensities.size()/2];
+
+        // Mode calculation
+        std::map<int, int> intensity_histogram;
+        for (const auto& intensity : all_intensities) {
+            intensity_histogram[static_cast<int>(intensity)]++;
+        }
+        int mode_intensity = std::max_element(
+            intensity_histogram.begin(), intensity_histogram.end(),
+            [](const auto& p1, const auto& p2) { return p1.second < p2.second; }
+        )->first;
+
+        // Log intensity statistics
+        RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), 
+            "Intensity Statistics - Mean: %.3f, Median: %.3f, Mode: %.3f, Min: %.3f, Max: %.3f",
+            mean_intensity, median_intensity, static_cast<float>(mode_intensity), min_intensity, max_intensity);
+
+        // Create iris image from accumulated intensities
+        for (int i = 0; i < rows_; i++) {
+            for (int j = 0; j < columns_; j++) {
+                if (count_accumulator.at<int>(i, j) > 0) {
+                    float avg_intensity = intensity_accumulator.at<float>(i, j) / count_accumulator.at<int>(i, j);
+                    // Normalize to 0-255 range
+                    iris_image.at<uint8_t>(i, j) = static_cast<uint8_t>((avg_intensity - min_intensity) * 255.0 / (max_intensity - min_intensity));
+                }
             }
         }
-    }
 
-    // Calculate iris image statistics
-    int non_zero_pixels = cv::countNonZero(iris_image);
-    float sparsity = static_cast<float>(non_zero_pixels) / (rows_ * columns_);
-    
-    // Calculate min, max, mean of non-zero values
-    double min_val, max_val;
-    cv::Point min_loc, max_loc;
-    cv::minMaxLoc(iris_image, &min_val, &max_val, &min_loc, &max_loc);
-    
-    // Calculate mean of non-zero values
-    cv::Scalar mean_val = cv::mean(iris_image, iris_image > 0);
-    
-    // Sample values from different regions
-    std::stringstream ss;
-    ss << "Iris Image Values Sample:\n";
-    ss << "  Top-left (0,0): " << (int)iris_image.at<uint8_t>(0,0) << "\n";
-    ss << "  Top-right (0," << columns_-1 << "): " << (int)iris_image.at<uint8_t>(0,columns_-1) << "\n";
-    ss << "  Center (" << rows_/2 << "," << columns_/2 << "): " << (int)iris_image.at<uint8_t>(rows_/2,columns_/2) << "\n";
-    ss << "  Bottom-left (" << rows_-1 << ",0): " << (int)iris_image.at<uint8_t>(rows_-1,0) << "\n";
-    ss << "  Bottom-right (" << rows_-1 << "," << columns_-1 << "): " << (int)iris_image.at<uint8_t>(rows_-1,columns_-1);
+        // Calculate iris image statistics
+        int non_zero_pixels = cv::countNonZero(iris_image);
+        float sparsity = static_cast<float>(non_zero_pixels) / (rows_ * columns_);
+        
+        // Calculate min, max, mean of non-zero values
+        double min_val, max_val;
+        cv::Point min_loc, max_loc;
+        cv::minMaxLoc(iris_image, &min_val, &max_val, &min_loc, &max_loc);
+        
+        // Calculate mean of non-zero values
+        cv::Scalar mean_val = cv::mean(iris_image, iris_image > 0);
+        
+        // Sample values from different regions
+        std::stringstream ss;
+        ss << "Iris Image Values Sample:\n";
+        ss << "  Top-left (0,0): " << (int)iris_image.at<uint8_t>(0,0) << "\n";
+        ss << "  Top-right (0," << columns_-1 << "): " << (int)iris_image.at<uint8_t>(0,columns_-1) << "\n";
+        ss << "  Center (" << rows_/2 << "," << columns_/2 << "): " << (int)iris_image.at<uint8_t>(rows_/2,columns_/2) << "\n";
+        ss << "  Bottom-left (" << rows_-1 << ",0): " << (int)iris_image.at<uint8_t>(rows_-1,0) << "\n";
+        ss << "  Bottom-right (" << rows_-1 << "," << columns_-1 << "): " << (int)iris_image.at<uint8_t>(rows_-1,columns_-1);
 
-    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), 
-        "Iris Image Detailed Statistics:\n"
-        "  - Size: %dx%d\n"
-        "  - Non-zero pixels: %d (%.1f%%)\n"
-        "  - Value range: %.1f to %.1f\n"
-        "  - Mean of non-zero values: %.1f\n"
-        "  - %s",
-        rows_, columns_,
-        non_zero_pixels, sparsity * 100.0,
-        min_val, max_val,
-        mean_val[0],
-        ss.str().c_str());
+        RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), 
+            "Iris Image Detailed Statistics:\n"
+            "  - Size: %dx%d\n"
+            "  - Non-zero pixels: %d (%.1f%%)\n"
+            "  - Value range: %.1f to %.1f\n"
+            "  - Mean of non-zero values: %.1f\n"
+            "  - %s",
+            rows_, columns_,
+            non_zero_pixels, sparsity * 100.0,
+            min_val, max_val,
+            mean_val[0],
+            ss.str().c_str());
 
-    // Log histogram of values
-    std::vector<int> histogram(256, 0);
-    for(int i = 0; i < rows_; i++) {
-        for(int j = 0; j < columns_; j++) {
-            histogram[iris_image.at<uint8_t>(i,j)]++;
+        // Log histogram of values
+        std::vector<int> histogram(256, 0);
+        for(int i = 0; i < rows_; i++) {
+            for(int j = 0; j < columns_; j++) {
+                histogram[iris_image.at<uint8_t>(i,j)]++;
+            }
         }
-    }
-    
-    std::stringstream hist_ss;
-    hist_ss << "Value distribution (in ranges):\n";
-    hist_ss << "  0: " << histogram[0] << " pixels\n";  // zeros
-    hist_ss << "  1-50: " << std::accumulate(histogram.begin()+1, histogram.begin()+51, 0) << " pixels\n";
-    hist_ss << "  51-100: " << std::accumulate(histogram.begin()+51, histogram.begin()+101, 0) << " pixels\n";
-    hist_ss << "  101-150: " << std::accumulate(histogram.begin()+101, histogram.begin()+151, 0) << " pixels\n";
-    hist_ss << "  151-200: " << std::accumulate(histogram.begin()+151, histogram.begin()+201, 0) << " pixels\n";
-    hist_ss << "  201-255: " << std::accumulate(histogram.begin()+201, histogram.end(), 0) << " pixels";
+        
+        std::stringstream hist_ss;
+        hist_ss << "Value distribution (in ranges):\n";
+        hist_ss << "  0: " << histogram[0] << " pixels\n";  // zeros
+        hist_ss << "  1-50: " << std::accumulate(histogram.begin()+1, histogram.begin()+51, 0) << " pixels\n";
+        hist_ss << "  51-100: " << std::accumulate(histogram.begin()+51, histogram.begin()+101, 0) << " pixels\n";
+        hist_ss << "  101-150: " << std::accumulate(histogram.begin()+101, histogram.begin()+151, 0) << " pixels\n";
+        hist_ss << "  151-200: " << std::accumulate(histogram.begin()+151, histogram.begin()+201, 0) << " pixels\n";
+        hist_ss << "  201-255: " << std::accumulate(histogram.begin()+201, histogram.end(), 0) << " pixels";
 
-    RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), "%s", hist_ss.str().c_str());
-
+        RCLCPP_INFO(rclcpp::get_logger("lidar_iris_descriptor"), "%s", hist_ss.str().c_str());
+    }   
     // Create and normalize the row key descriptor
     Eigen::VectorXf rowkey = Eigen::VectorXf::Zero(rows_);
     for (int i = 0; i < rows_; i++) {
