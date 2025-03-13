@@ -80,10 +80,6 @@ void distributedMapping::loopInfoHandler(
 			// add loop factor
 			local_pose_graph->add(factor);
 			local_pose_graph_no_filtering->add(factor);
-            RCLCPP_INFO(this->get_logger(),
-                "[LoopClosureUtils] Added loop factor between poses %c%d and %c%d",
-                Symbol(msg->robot0 + 'a').chr(), msg->index0,
-                Symbol(msg->robot1 + 'a').chr(), msg->index1);
 			// enable distributed mapping
 			sent_start_optimization_flag = true;
 
@@ -98,35 +94,10 @@ void distributedMapping::loopInfoHandler(
 			key = Symbol('a'+msg->robot0, msg->index0).key();
 			updatePoseEstimateFromNeighbor(msg->robot0, key, pose);
 
-            RCLCPP_INFO(this->get_logger(),
-                "[LoopClosureUtils] Updating pose estimate from neighbor:\n"
-                "  Robot: %d\n"
-                "  Key: %lu\n"
-                "  Pose: x=%.2f, y=%.2f, z=%.2f",
-                msg->robot0,
-                key,
-                pose.pose.x(),
-                pose.pose.y(),
-                pose.pose.z());
-
 			// add transform to local map (for PCM)
 			auto new_factor = boost::dynamic_pointer_cast<BetweenFactor<Pose3>>(factor);
 			Matrix covariance_matrix = loop_noise->covariance();
 			robot_local_map.addTransform(*new_factor, covariance_matrix);
-
-            RCLCPP_INFO(this->get_logger(),
-                "[LoopClosureUtils] Transform details after adding to local map:\n"
-                "  Total transforms in local map: %zu\n"
-                "  Latest transform details:\n"
-                "    From: Robot %d (key: %lu)\n"
-                "    To: Robot %d (key: %lu)\n"
-                "    Transform: x=%.2f, y=%.2f, z=%.2f",
-                robot_local_map.getTransforms().transforms.size(),
-                msg->robot0, new_factor->key1(),
-                msg->robot1, new_factor->key2(),
-                new_factor->measured().x(),
-                new_factor->measured().y(),
-                new_factor->measured().z());
 		}
 	}
 }
@@ -231,17 +202,7 @@ void distributedMapping::updatePoseEstimateFromNeighbor(
     const int& rid,
     const Key& key,
     const graph_utils::PoseWithCovariance& pose)
-{
-    RCLCPP_INFO(this->get_logger(),
-        "[updatePoseEstimateFromNeighbor] Received pose from robot %d:\n"
-        "  Key: %lu\n"
-        "  Pose: x=%.2f, y=%.2f, z=%.2f",
-        robot_id,
-        key,
-        pose.pose.x(),
-        pose.pose.y(),
-        pose.pose.z());
-        
+{        
     graph_utils::TrajectoryPose trajectory_pose;  // Initialize a new trajectory pose.
     trajectory_pose.id = key;                     // Set the pose ID.
     trajectory_pose.pose = pose;                  // Set the pose with covariance.
@@ -268,18 +229,11 @@ void distributedMapping::updatePoseEstimateFromNeighbor(
     // If no trajectory exists for the robot ID, create a new one.
     else {
         graph_utils::Trajectory new_trajectory;  // Initialize a new trajectory.
+        new_trajectory.trajectory_poses.insert(make_pair(key, trajectory_pose));  // Insert the pose.
         new_trajectory.start_id = key;  // Set the start ID to the current key.
         new_trajectory.end_id = key;    // Set the end ID to the current key.
-        new_trajectory.trajectory_poses.insert(make_pair(key, trajectory_pose));  // Insert the pose.
         // Insert the new trajectory into the pose estimates map.
         pose_estimates_from_neighbors.insert(make_pair(rid, new_trajectory));
-    
-        RCLCPP_INFO(this->get_logger(),
-            "[updatePoseEstimateFromNeighbor] Created new trajectory for robot %d:\n"
-            "  Key: %lu\n"
-            "  Start ID: %lu\n"
-            "  End ID: %lu",
-            rid, key, new_trajectory.start_id, new_trajectory.end_id);
     }
 }
 

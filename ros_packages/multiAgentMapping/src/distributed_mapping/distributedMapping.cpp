@@ -26,13 +26,6 @@ void distributedMapping::optStateHandler(
 	const std_msgs::msg::Int8::SharedPtr& msg,
 	int id)
 {
-	// Validate robot ID
-	if (id >= number_of_robots_ || id < 0) {
-		RCLCPP_ERROR(this->get_logger(), 
-			"[optStateHandler] Invalid robot ID: %d", id);
-		return;
-	}
-
 	neighbors_started_optimization[id] = (OptimizerState)msg->data <= OptimizerState::Start;
 	neighbor_state[id] = (OptimizerState)msg->data;
 	neighbors_lowest_id_included[id] = lowest_id_included;
@@ -82,30 +75,7 @@ void distributedMapping::neighborRotationHandler(
 		if(msg->receiver_id != robot_id || optimizer_state != OptimizerState::RotationEstimation) {
 			return;
 		}
-
-		// Check if we have enough constraints
-		if (optimizer->currentGraph().size() < optimizer->currentEstimate().size()) {
-			RCLCPP_WARN(this->get_logger(), 
-				"Not enough constraints for rotation estimation. Factors: %lu, Variables: %lu",
-				optimizer->currentGraph().size(), 
-				optimizer->currentEstimate().size());
-			return;
-		}
-
-		// Verify prior exists
-		bool hasPrior = false;
-		for (const auto& factor : optimizer->currentGraph()) {
-			if (boost::dynamic_pointer_cast<gtsam::PriorFactor<gtsam::Pose3>>(factor)) {
-				hasPrior = true;
-				break;
-			}
-		}
-
-		if (!hasPrior) {
-			RCLCPP_ERROR(this->get_logger(), "No prior factor found in graph");
-			return;
-		}
-
+		// prepare for rotation optimization
 		// Update neighbor rotation estimates
 		for(int i = 0; i < msg->pose_id.size(); i++) {
 			Symbol symbol((id + 'a'), msg->pose_id[i]);
@@ -114,49 +84,20 @@ void distributedMapping::neighborRotationHandler(
 			if(!use_pcm_ || other_robot_keys_for_optimization.find(symbol.key()) != other_robot_keys_for_optimization.end()) {
 				// Extract rotation matrix
 				Vector rotation_matrix(9);
-				for(int j = 0; j < 9; j++) {
-					rotation_matrix[j] = msg->estimate[j + 9*i];
-				}
-				
-				// Validate rotation matrix before updating
-				if(rotation_matrix.norm() < 1e-6) {
-					RCLCPP_WARN(this->get_logger(), "Received zero rotation matrix for symbol %c%lu", 
-						symbol.chr(), symbol.index());
-					continue;
-				}
-				// Check orthogonality
-				Matrix3 R;
-				R << rotation_matrix[0], rotation_matrix[1], rotation_matrix[2],
-					rotation_matrix[3], rotation_matrix[4], rotation_matrix[5],
-					rotation_matrix[6], rotation_matrix[7], rotation_matrix[8];
-
-				if(std::abs((R.transpose() * R - Matrix3::Identity()).norm()) > 1e-3) {
-					RCLCPP_WARN(this->get_logger(), 
-						"Non-orthogonal rotation matrix received for symbol %c%lu", 
-						symbol.chr(), symbol.index());
-					continue;
-				}
-
-				RCLCPP_DEBUG(this->get_logger(), 
-					"Updating rotation for symbol %c%lu with matrix norm: %.6f",
-					symbol.chr(), symbol.index(), rotation_matrix.norm());
-					
+				rotation_matrix << msg->estimate[0 + 9*i], msg->estimate[1 + 9*i], msg->estimate[2 + 9*i],
+					msg->estimate[3 + 9*i], msg->estimate[4 + 9*i], msg->estimate[5 + 9*i],
+					msg->estimate[6 + 9*i], msg->estimate[7 + 9*i], msg->estimate[8 + 9*i];
 				optimizer->updateNeighborLinearizedRotations(symbol.key(), rotation_matrix);
-				RCLCPP_INFO(this->get_logger(),
-					"[neighborRotationHandler] Successfully updated rotation for symbol %c%lu",
-					symbol.chr(), symbol.index());
+
 			} else {
 				RCLCPP_WARN(this->get_logger(), 
-					"Key %c%lu not found in optimization set - skipping key", 
-					symbol.chr(), symbol.index());
-				if(other_robot_keys_for_optimization.find(symbol.key()) != other_robot_keys_for_optimization.end()) {
-					other_robot_keys_for_optimization.erase(symbol.key());
-				}
-				continue;
+					"Stop Optimization on robot<%d> for %c%lu", 
+					robot_id, symbol.chr(), symbol.index());
+				abortOptimization(false);
 			}
 		}
 
-		// Update initialization flags
+		// Update neighbor flags
 		if(optimizer_state == OptimizerState::RotationEstimation) {
 			optimizer->updateNeighboringRobotInitialized(char(id + 'a'), msg->initialized);
 			neighbors_rotation_estimate_finished[id] = msg->estimation_done;
@@ -164,109 +105,85 @@ void distributedMapping::neighborRotationHandler(
 
 		// Check if we have all required neighbors
 		if(optimizer->getNeighboringRobotsInit().size() != optimization_order.size() - 1) {
-			return;
-		}
-
 		// Perform rotation estimation if not done
-		if(!estimation_done) {
-			try {
-				optimizer->estimateRotation();
-				
-				// Validate the estimation result
-				double change = optimizer->latestChange();
-				if(std::isnan(change) || std::isinf(change)) {
-					throw std::runtime_error("Invalid rotation estimation result");
+			if(!estimation_done) {
+				try {
+					optimizer->estimateRotation();					
+					optimizer->updateRotation();
+					optimizer->updateInitialized(true);
+					current_rotation_estimate_iteration++;
+				} catch(const std::exception& ex) {
+					RCLCPP_ERROR(this->get_logger(), 
+						"Rotation estimation failed for robot<%d>: %s", robot_id, ex.what());
+					abortOptimization(true);
 				}
 
-				// Check if the result is numerically stable
-				if (change > 1e6) {
-					throw std::runtime_error("Rotation estimation result is numerically unstable");
-				}
-				
-				optimizer->updateRotation();
-				optimizer->updateInitialized(true);
-				current_rotation_estimate_iteration++;
-
-				RCLCPP_INFO(this->get_logger(),
-					"Rotation estimation<%d> iter:[%d/%d] change:%.4f",
-					robot_id, current_rotation_estimate_iteration, 
-					optimization_maximum_iteration_, change);
-
-				// Check convergence
-				if(change <= rotation_estimate_change_threshold_ || 
-				current_rotation_estimate_iteration >= optimization_maximum_iteration_) {
+				// If change is small enough, end rotation optimization
+				if((optimizer->latestChange() <= rotation_estimate_change_threshold_) ||
+					(current_rotation_estimate_iteration >= optimization_maximum_iteration_))
+				{
 					rotation_estimate_finished = true;
 					estimation_done = true;
 				}
-			} catch(const gtsam::IndeterminantLinearSystemException& e) {
-				RCLCPP_ERROR(this->get_logger(), 
-					"Rotation estimation failed due to underconstrained system: %s", 
-					e.what());
-				abortOptimization(true);
-				return;
-			} catch(const std::exception& ex) {
-				RCLCPP_ERROR(this->get_logger(), 
-					"Rotation estimation failed: %s", ex.what());
-				abortOptimization(true);
-				return;
+				RCLCPP_INFO(this->get_logger(), "Rotation Estimation <%d> iter[%d/%d] change: %.4f.", robot_id, current_rotation_estimate_iteration, optimization_maximum_iteration_, optimizer->latestChange());
 			}
-		}
-		// check neigbors rotation optimization state
-		bool send_flag = estimation_done;
-		for(int i = 0; i < optimization_order.size(); i++)
-		{
-			int other_robot = optimization_order[i];
-			if(!neighbors_rotation_estimate_finished[other_robot] && other_robot != robot_id)
+			// check neigbors rotation optimization state
+			bool send_flag = estimation_done;
+			for(int i = 0; i < optimization_order.size(); i++)
 			{
-				send_flag = false;	// If any neighbor is not done, do not proceed to send the estimate
-			}
-		}
-
-		// Send the rotation estimate to the next robot in the optimization order
-		if(!send_flag){
-			// clear buffer
-			for(const auto& neighbor : neighbors_within_communication_range) {
-				robots[neighbor].estimate_msg.pose_id.clear();
-				robots[neighbor].estimate_msg.estimate.clear();
-			}
-			// extract rotation estimate for each loop closure
-			for(const std::pair<Symbol, Symbol>& separator_symbols: optimizer->separatorsSymbols()){
-				//robot_id
-				int other_robot = (int)(separator_symbols.first.chr() - 'a');
-				// pose id
-				robots[other_robot].estimate_msg.pose_id.push_back(separator_symbols.second.index());
-				// rotation estimates
-				Vector rotation_estimate = optimizer->linearizedRotationAt(separator_symbols.second.key());
-				for(int it = 0; it < 9; it++)
-				{
-					robots[other_robot].estimate_msg.estimate.push_back(rotation_estimate[it]);
-				}
-			}
-
-			// send rotation estimate to the next robot in the optimization order
-			int publish_flag = false;
-			for(int i=0; i<optimization_order.size(); i++){
 				int other_robot = optimization_order[i];
-				if(other_robot == robot_id){
-					publish_flag = true;	// Start publishing after reaching this robot in the order
-					continue;
-				}
-				if(publish_flag){
-					// Populate and publish the estimate message for each robot
-					robots[other_robot].estimate_msg.initialized = optimizer->isRobotInitialized();
-					robots[other_robot].estimate_msg.receiver_id = other_robot;
-					robots[other_robot].estimate_msg.estimation_done = estimation_done;
-					robots[robot_id].pub_neighbor_rotation_estimates->publish(robots[other_robot].estimate_msg);
+				if(!neighbors_rotation_estimate_finished[other_robot] && other_robot != robot_id)
+				{
+					send_flag = false;	// If any neighbor is not done, do not proceed to send the estimate
 				}
 			}
-			// Reset the rotation estimate state and clear initialization flags
-			rotation_estimate_start = false;
-			optimizer->clearNeighboringRobotInit();
-		}
 
-		// Publish the current rotation optimization state to notify neighbors
-		state_msg.data = estimation_done? 1:0;
-		robots[robot_id].pub_rotation_estimate_state->publish(state_msg);
+			// Send the rotation estimate to the next robot in the optimization order
+			if(!send_flag){
+				// clear buffer
+				for(const auto& neighbor : neighbors_within_communication_range) {
+					robots[neighbor].estimate_msg.pose_id.clear();
+					robots[neighbor].estimate_msg.estimate.clear();
+				}
+				// extract rotation estimate for each loop closure
+				for(const std::pair<Symbol, Symbol>& separator_symbols: optimizer->separatorsSymbols()){
+					//robot_id
+					int other_robot = (int)(separator_symbols.first.chr() - 'a');
+					// pose id
+					robots[other_robot].estimate_msg.pose_id.push_back(separator_symbols.second.index());
+					// rotation estimates
+					Vector rotation_estimate = optimizer->linearizedRotationAt(separator_symbols.second.key());
+					for(int it = 0; it < 9; it++)
+					{
+						robots[other_robot].estimate_msg.estimate.push_back(rotation_estimate[it]);
+					}
+				}
+
+				// send rotation estimate to the next robot in the optimization order
+				int publish_flag = false;
+				for(int i=0; i<optimization_order.size(); i++){
+					int other_robot = optimization_order[i];
+					if(other_robot == robot_id){
+						publish_flag = true;	// Start publishing after reaching this robot in the order
+						continue;
+					}
+					if(publish_flag){
+						// Populate and publish the estimate message for each robot
+						robots[other_robot].estimate_msg.initialized = optimizer->isRobotInitialized();
+						robots[other_robot].estimate_msg.receiver_id = other_robot;
+						robots[other_robot].estimate_msg.estimation_done = estimation_done;
+						robots[robot_id].pub_neighbor_rotation_estimates->publish(robots[other_robot].estimate_msg);
+					}
+				}
+				// Reset the rotation estimate state and clear initialization flags
+				rotation_estimate_start = false;
+				optimizer->clearNeighboringRobotInit();
+			}
+
+			// Publish the current rotation optimization state to notify neighbors
+			state_msg.data = estimation_done? 1:0;
+			robots[robot_id].pub_rotation_estimate_state->publish(state_msg);
+		}
 	}
 
 /**
@@ -302,7 +219,7 @@ void distributedMapping::neighborRotationHandler(
     }
 
     // Update neighbor pose estimates
-    for(size_t i = 0; i < msg->pose_id.size(); i++)
+    for(int i = 0; i < msg->pose_id.size(); i++)
     {
         if(neighbors_within_communication_range.find(id) != neighbors_within_communication_range.end())
         {
@@ -371,7 +288,7 @@ void distributedMapping::neighborRotationHandler(
         
         // Check neighbors rotation optimization state
         bool send_flag = estimation_done;
-        for(size_t i = 0; i < optimization_order.size(); i++)
+        for(int i = 0; i < optimization_order.size(); i++)
         {
             int other_robot = optimization_order[i];
             if(!neighbors_pose_estimate_finished[other_robot] && other_robot != robot_id)
@@ -442,8 +359,8 @@ void distributedMapping::neighborRotationHandler(
 
 /**
  * @brief Function to save current frame if its difference is more than the threshold
- * @param surroundingkeyframeAddingDistThreshold = 0.2radian
- * @param surroundingkeyframeAddingAngleThreshold = 1.0m
+ * @param surroundingkeyframeAddingDistThreshold = 1.0m
+ * @param surroundingkeyframeAddingAngleThreshold = 0.2radian
  */
 bool distributedMapping::saveFrame(
 	const Pose3& pose_to
@@ -738,12 +655,6 @@ void distributedMapping::makeIrisDescriptor() {
 		downsample_filter_for_descriptor.setInputCloud(robots[robot_id].keyframe_cloud);
 		downsample_filter_for_descriptor.filter(*cloud_for_descript_ds);
 
-		if (cloud_for_descript_ds->empty()) {
-			RCLCPP_WARN(this->get_logger(), 
-				"[makeIrisDescriptor] Empty downsampled cloud, skipping descriptor generation");
-			return;
-		}
-
 		RCLCPP_INFO(this->get_logger(), "[DEBUG] Filtered LiDAR PointCloud Size: %lu", cloud_for_descript_ds->size());
 
 		// Generate descriptor and prepare message
@@ -903,10 +814,6 @@ void distributedMapping::outliersFiltering() {
         measurements_accepted_num = 0;
         measurements_rejected_num = 0;
 
-        RCLCPP_INFO(this->get_logger(), 
-            "[outliersFiltering] Processing %zu neighbors within communication range", 
-            neighbors_within_communication_range.size());
-
         // perform pairwise consistency maximization for each pair robot 
         for(const auto& neighbor : neighbors_within_communication_range) {
             if(neighbor == robot_id || pose_estimates_from_neighbors.find(neighbor) == pose_estimates_from_neighbors.end()) {
@@ -996,26 +903,6 @@ void distributedMapping::outliersFiltering() {
                 robot_local_map.getTransforms(), 
                 robot_local_map.getLoopClosures());
 
-            // Print transform counts for debugging
-            RCLCPP_INFO(this->get_logger(), 
-                "[outliersFiltering] Transform conversion details:\n"
-                "  Robot %d pose estimates count: %zu\n"
-                "  Robot %d pose estimates converted to transforms: %zu\n"
-                "  Latest pose estimate key: %lu",
-                neighbor,
-                poses.size(),
-                neighbor,
-                neighbor_transforms.transforms.size(),
-                neighbor_transforms.end_id);
-
-            RCLCPP_INFO(this->get_logger(), "[outliersFiltering] PCM Input Stats - Robot %d and %d:\n"
-                "  Loop closure transforms: %zu\n"
-                "  Local transforms R1: %zu\n"
-                "  Local transforms R2: %zu",
-                robot_id, neighbor,
-                loop_closures_transforms.transforms.size(),
-                local_info.getTransforms().transforms.size(),
-                neighbor_transforms.transforms.size());
 			/*
 			RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Loop closure transforms between robots:");
 				for(const auto& transform : loop_closures_transforms.transforms) {
@@ -1077,6 +964,10 @@ void distributedMapping::outliersFiltering() {
 			}
 
             std::vector<int> max_clique = max_clique_info.first;
+			measurements_accepted_num += max_clique.size();
+			measurements_rejected_num += max_clique_info.second;
+
+			// get loopclosure ids	
 			auto loopclosures_ids = optimizer->loopclosureEdge();
 			RCLCPP_INFO(this->get_logger(), "[outliersFiltering] Max clique vertices:");
 			for(const auto& vertex_idx : max_clique) {
@@ -1134,6 +1025,8 @@ void distributedMapping::outliersFiltering() {
                 if(keys.size() == 2) {
                     char robot0 = symbolChr(keys.at(0));
                     char robot1 = symbolChr(keys.at(1));
+					int index0 = symbolIndex(keys.at(0));
+					int index1 = symbolIndex(keys.at(1));
                     if(robot0 != robot1) {
                         new_loopclosure_ids.push_back(i);
                     }
@@ -1408,55 +1301,30 @@ void distributedMapping::failSafeCheck(){
 
 void distributedMapping::initializePoseEstimation()
 {
-    RCLCPP_DEBUG(this->get_logger(), "[initializePoseEstimation] Converting linearized rotations to poses");
-    
-    try {
-        optimizer->convertLinearizedRotationToPoses();
-        Values neighbors = optimizer->neighbors();
-
-        for(const Values::ConstKeyValuePair& key_value: neighbors)
-        {
-            Key key = key_value.key;
-            
-            // Pick linear rotation estimate
-            VectorValues neighbor_estimate_rot_lin;
-            neighbor_estimate_rot_lin.insert(key, optimizer->neighborsLinearizedRotationsAt(key));
-            
-            // Make a pose out of it
-            Values neighbor_rot_estimate = 
-                InitializePose3::normalizeRelaxedRotations(neighbor_estimate_rot_lin);
-            Values neighbor_pose_estimate = 
-                distributed_mapper::evaluation_utils::pose3WithZeroTranslation(neighbor_rot_estimate);
-            
-            // Store it
-            optimizer->updateNeighbor(key, neighbor_pose_estimate.at<Pose3>(key));
-
-            RCLCPP_DEBUG(this->get_logger(),
-                "[initializePoseEstimation] Updated neighbor pose for key %lu", 
-                gtsam::Symbol(key).index());
-        }
-
-        // Reset flags for flagged initialization
-        optimizer->updateInitialized(false);
-        optimizer->clearNeighboringRobotInit();
-        estimation_done = false;
-        
-        for(auto& neighbor_done : neighbors_estimation_done)
-        {
-            neighbor_done.second = false;
-        }
-        
-        optimizer->resetLatestChange();
-
-        RCLCPP_INFO(this->get_logger(), 
-            "[initializePoseEstimation] Successfully initialized pose estimation");
-    }
-    catch(const std::exception& e) {
-        RCLCPP_ERROR(this->get_logger(),
-            "[initializePoseEstimation] Error during initialization: %s", 
-            e.what());
-        throw;
-    }
+	optimizer->convertLinearizedRotationToPoses();
+	Values neighbors = optimizer->neighbors();
+	for(const Values::ConstKeyValuePair& key_value: neighbors){
+		Key key = key_value.key;
+		// pick linear rotation estimate
+		VectorValues neighbor_estimate_rot_lin;
+		neighbor_estimate_rot_lin.insert(key,  optimizer->neighborsLinearizedRotationsAt(key));
+		// make a pose out of it
+		Values neighbor_rot_estimate = 
+			InitializePose3::normalizeRelaxedRotations(neighbor_estimate_rot_lin);
+		Values neighbor_pose_estimate = 
+			distributed_mapper::evaluation_utils::pose3WithZeroTranslation(neighbor_rot_estimate);
+		// store it
+		optimizer->updateNeighbor(key, neighbor_pose_estimate.at<Pose3>(key));
+	}
+	// reset flags for flagged initialization.
+	optimizer->updateInitialized(false);
+	optimizer->clearNeighboringRobotInit();
+	estimation_done = false;
+	for(auto& neighbor_done : neighbors_estimation_done)
+	{
+		neighbor_done.second = false;
+	}
+	optimizer->resetLatestChange();
 }
 
 bool distributedMapping::poseEstimationStoppingBarrier()
@@ -1480,6 +1348,7 @@ bool distributedMapping::poseEstimationStoppingBarrier()
 		for(const auto& neighbor : neighbors_within_communication_range){
 			robots[neighbor].estimate_msg.pose_id.clear();
 			robots[neighbor].estimate_msg.estimate.clear();
+			robots[neighbor].estimate_msg.anchor_offset.clear();
 		}
 		// extract pose estimate for each loop closure
 		for(const std::pair<Symbol, Symbol>& separator_symbols: optimizer->separatorsSymbols()){
@@ -1605,46 +1474,14 @@ void distributedMapping::incrementalInitialGuessUpdate(){
 
 void distributedMapping::endOptimization()
 {
-    RCLCPP_DEBUG(this->get_logger(), "[endOptimization] Starting optimization cleanup");
+	if(prior_owner == robot_id){
+		optimizer->retractPose3GlobalWithOffset(anchor_offset);
+	} else {
+		optimizer->retractPose3GlobalWithOffset(neighbors_anchor_offset[prior_owner]);
+	}
 
-    try {
-        // Retract to global frame
-        if(prior_owner == robot_id)
-        {
-            RCLCPP_INFO(this->get_logger(), 
-                "[endOptimization] Retracting with local anchor offset [%.3f, %.3f, %.3f]",
-                anchor_offset.x(), anchor_offset.y(), anchor_offset.z());
-            
-            optimizer->retractPose3GlobalWithOffset(anchor_offset);
-        }
-        else
-        {
-            RCLCPP_INFO(this->get_logger(), 
-                "[endOptimization] Retracting with prior owner's (%d) anchor offset [%.3f, %.3f, %.3f]",
-                prior_owner,
-                neighbors_anchor_offset[prior_owner].x(),
-                neighbors_anchor_offset[prior_owner].y(),
-                neighbors_anchor_offset[prior_owner].z());
-            
-            optimizer->retractPose3GlobalWithOffset(neighbors_anchor_offset[prior_owner]);
-        }
-
-        // Update estimates
-        incrementalInitialGuessUpdate();
-
-        // Update lowest ID tracking
-        lowest_id_included = lowest_id_to_included;
-
-        RCLCPP_INFO(this->get_logger(), 
-            "[endOptimization] Optimization completed successfully. New lowest ID: %d",
-            lowest_id_included);
-    }
-    catch(const std::exception& e) {
-        RCLCPP_ERROR(this->get_logger(),
-            "[endOptimization] Error during optimization cleanup: %s", 
-            e.what());
-        throw;
-    }
+	incrementalInitialGuessUpdate();
+	lowest_id_included = lowest_id_to_included;
 }
 
 void distributedMapping::changeOptimizerState(const OptimizerState& state) {
@@ -1680,7 +1517,7 @@ void distributedMapping::changeOptimizerState(const OptimizerState& state) {
     optimizer_state = state;
 
     // Update the state message and publish it
-    state_msg.data = static_cast<int>(optimizer_state);
+    state_msg.data = (int)optimizer_state;
     robots[robot_id].pub_optimization_state->publish(state_msg);
 }
 

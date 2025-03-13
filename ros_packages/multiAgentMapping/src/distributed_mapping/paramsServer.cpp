@@ -13,7 +13,7 @@ paramsServer::paramsServer(const std::string& node_name, const rclcpp::NodeOptio
     // extract last char, convert to int and assign as robot_id
     robot_id = robot_name[0] - 'a';
 
-    this->declare_parameter<int>("number_of_robots", 2); // declaring the param with default of 2
+    this->declare_parameter<int>("number_of_robots", 3); // declaring the param with default of 2
     this->get_parameter("number_of_robots", number_of_robots_); // Retrieve the parameter value
 
     if (number_of_robots_ < 1){
@@ -34,7 +34,7 @@ paramsServer::paramsServer(const std::string& node_name, const rclcpp::NodeOptio
 
     // lidar config
     sensor_ = LiDARType::VELODYNE; // only using velodyne
-    this->declare_parameter<int>(robot_namespace + "/n_scan", 128); // default -> 128 [VLS 128 used]
+    this->declare_parameter<int>(robot_namespace + "/n_scan", 16); // default -> 128 [VLS 128 used]
     this->get_parameter(robot_namespace + "/n_scan", n_scan);
 
     // threshold for keyframes
@@ -45,7 +45,7 @@ paramsServer::paramsServer(const std::string& node_name, const rclcpp::NodeOptio
 
     // cpu params
     // Declare parameters with default values
-    this->declare_parameter<int>(robot_namespace + "/onboard_cpu_cores_num", 4);  // Default: 4 cores
+    this->declare_parameter<int>(robot_namespace + "/onboard_cpu_cores_num", 8);  // Default: 4 cores
     this->declare_parameter<float>(robot_namespace + "/loop_closure_process_interval", 0.05);  // Default: 0.05 second
     this->declare_parameter<float>(robot_namespace + "/map_publish_interval", 10.0);  // Default: 10.0 seconds
     this->declare_parameter<float>(robot_namespace + "/mapping_process_interval", 0.1);  // Default: 0.1 seconds
@@ -109,7 +109,7 @@ paramsServer::paramsServer(const std::string& node_name, const rclcpp::NodeOptio
     descriptor_type_num_ = DescriptorType::LidarIris;
     RCLCPP_INFO(this->get_logger(), "Descriptor type set to LidarIris.");
 
-    this->declare_parameter<int>(robot_namespace + "/knn_candidates", 10);
+    this->declare_parameter<int>(robot_namespace + "/knn_candidates", 6);
     this->declare_parameter<int>(robot_namespace + "/exclude_recent_frame_num", 50);
     this->declare_parameter<float>(robot_namespace + "/search_radius", 30.0);
     this->declare_parameter<int>(robot_namespace + "/match_mode", 2);
@@ -121,6 +121,7 @@ paramsServer::paramsServer(const std::string& node_name, const rclcpp::NodeOptio
     this->declare_parameter<int>(robot_namespace + "/ransac_maximum_iteration", 2000);
     this->declare_parameter<float>(robot_namespace + "/ransac_threshold", 0.3);
     this->declare_parameter<float>(robot_namespace + "/ransac_outlier_reject_threshold", 0.35);
+
     this->get_parameter(robot_namespace + "/knn_candidates", knn_candidates_);
     this->get_parameter(robot_namespace + "/exclude_recent_frame_num", exclude_recent_frame_num_);
     this->get_parameter(robot_namespace + "/search_radius", search_radius_);
@@ -134,7 +135,7 @@ paramsServer::paramsServer(const std::string& node_name, const rclcpp::NodeOptio
     this->get_parameter(robot_namespace + "/ransac_threshold", ransac_threshold_);
     this->get_parameter(robot_namespace + "/ransac_outlier_reject_threshold", ransac_outlier_reject_threshold_);
 
-    this->declare_parameter<float>(robot_namespace + "/global_map_visualization_radius", 60.0);
+    this->declare_parameter<float>(robot_namespace + "/global_map_visualization_radius", 50.0);
     this->get_parameter(robot_namespace + "/global_map_visualization_radius", global_map_visualization_radius_);
 
     this->declare_parameter<std::string>(robot_namespace + "/save_directory", "/distributed_mapping_output");

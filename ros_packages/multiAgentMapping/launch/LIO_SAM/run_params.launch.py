@@ -11,7 +11,7 @@ def generate_launch_description():
     share_dir = get_package_share_directory('multi_agent_mapping')
     robot_namespace_ = LaunchConfiguration('namespace')
     param_file_name = LaunchConfiguration('params')
-    xacro_path = os.path.join(share_dir, 'config', 'robot.urdf.xacro')
+    xacro_path = os.path.join(share_dir, 'config', 'robot_isaac.urdf.xacro')
     rviz_config_file = PathJoinSubstitution([share_dir, 'config', 'rviz', LaunchConfiguration('rviz_config')])
 
     robot_namespace_declare = DeclareLaunchArgument(

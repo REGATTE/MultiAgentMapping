@@ -158,6 +158,10 @@ class paramsServer : public rclcpp::Node {
 		bool use_landmarks_; // use landmarks -- landmarks are given symbols as upper case of robot name
 		bool use_heuristics_; // use heuristics-based algorithm for the max-clique solver
 
+        // keyframe
+		float keyframe_distance_threshold_; // keyframe distance threshold (in meter)
+		float keyframe_angle_threshold_; // keyframe angle threshold (in rad)
+
         // downsample
 		float map_leaf_size_; // scan to map matching downsample rate (default 0.4)
 		float descript_leaf_size_; // descriptor downsample rate (default 0.1)

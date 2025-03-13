@@ -15,6 +15,11 @@ def generate_launch_description():
             'number_of_robots',
             default_value='3',
             description='Number of robots in the system'
+        ),
+         DeclareLaunchArgument(
+            'bag',
+            default_value='/home/regastation/Desktop/Datasets/S3E_V1/S3E_Campus_Road_1/S3E_Campus_Road_1.db3',
+            description='Path to bag file'
         )
     ]
 
@@ -39,6 +44,12 @@ def generate_launch_description():
     # Include single robot launches
     robot_launches = []
     for robot_prefix in ['a', 'b', 'c']:
+        params_file = PathJoinSubstitution([
+            pkg_share,
+            'config',
+            f'params_{robot_prefix}.yaml'
+        ])
+        
         single_robot_launch = IncludeLaunchDescription(
             PythonLaunchDescriptionSource([
                 PathJoinSubstitution([
@@ -48,37 +59,32 @@ def generate_launch_description():
                 ])
             ]),
             launch_arguments={
-                'robotPrefix': robot_prefix
+                'robotPrefix': robot_prefix,
+                'params_file': params_file
             }.items()
         )
         robot_launches.append(single_robot_launch)
-
-    # Remappings for rosbag
+    
+    # Define remappings for bag playback
     remappings = [
-        (f'/Alpha/velodyne_points', '/a/velodyne_points'),
-        (f'/Bob/velodyne_points', '/b/velodyne_points'),
-        (f'/Carol/velodyne_points', '/c/velodyne_points'),
-        (f'/Alpha/imu/data', '/a/imu/data'),
-        (f'/Bob/imu/data', '/b/imu/data'),
-        (f'/Carol/imu/data', '/c/imu/data')
+        ('/Alpha/velodyne_points', '/a/velodyne_points'),
+        ('/Bob/velodyne_points', '/b/velodyne_points'),
+        ('/Carol/velodyne_points', '/c/velodyne_points'),
+        ('/Alpha/imu/data', '/a/imu/data'),
+        ('/Bob/imu/data', '/b/imu/data'),
+        ('/Carol/imu/data', '/c/imu/data')
     ]
 
-    # Rosbag nodes using ros2 bag
-    # Bag file configuration
-    bag_file = PathJoinSubstitution([
-        '/home/regastation/Desktop/S3E_Campus_Road_1',
-        'SYSU_LIBRARY.bag'
-    ])
-
-    # Replace the bag Node with ExecuteProcess
-    bag_process = ExecuteProcess(
-        cmd=['ros2', 'bag', 'play', bag_file, '--rate', '1', '--qos-profile-overrides-path', 'qos_override.yaml'],
+    bag_player = ExecuteProcess(
+        cmd=['ros2', 'bag', 'play', LaunchConfiguration('bag'), '-s', 'sqlite3', '--remap'] + 
+            [f"{old}:={new}" for old, new in remappings],
         output='screen'
     )
 
     return LaunchDescription(
-        launch_args + 
+        launch_args +  
         [rviz_node, loop_viz_node] + 
-        robot_launches + 
-        [bag_process]
+        robot_launches +
+        [bag_player]
     )
+

@@ -167,10 +167,10 @@ public:
         get_parameter("imuTopic", imuTopic);
         declare_parameter("odomTopic", "lio_sam/odometry/imu");
         get_parameter("odomTopic", odomTopic);
-        declare_parameter("gpsTopic", "lio_sam/odometry/gps");
+        declare_parameter("gpsTopic", "fix");
         get_parameter("gpsTopic", gpsTopic);
 
-        declare_parameter("lidarFrame", "laser_data_frame");
+        declare_parameter("lidarFrame", "velodyne");
         get_parameter("lidarFrame", lidarFrame);
         declare_parameter("baselinkFrame", "base_link");
         get_parameter("baselinkFrame", baselinkFrame);
@@ -262,7 +262,7 @@ public:
         get_parameter("edgeThreshold", edgeThreshold);
         declare_parameter("surfThreshold", 0.1);
         get_parameter("surfThreshold", surfThreshold);
-        declare_parameter("edgeFeatureMinValidNum", 10);
+        declare_parameter("edgeFeatureMinValidNum", 2);
         get_parameter("edgeFeatureMinValidNum", edgeFeatureMinValidNum);
         declare_parameter("surfFeatureMinValidNum", 100);
         get_parameter("surfFeatureMinValidNum", surfFeatureMinValidNum);
